@@ -52,42 +52,62 @@ function bodyOf(e: CspEvent, raw?: Record<string, unknown>): string {
   return text.slice(0, BODY_MAX);
 }
 
-export function recordCspEvent(
-  db: Db, site: Site, e: CspEvent, now: number, raw?: Record<string, unknown>,
+/** The per-report fields stored in `samples`; `body` is the already-sanitized JSON text. */
+export type SampleInput = {
+  sourceFile: string; sample: string; line: number | null; ua: string; disposition: string; body: string;
+};
+
+/**
+ * Upsert of the (site, type, keyA, keyB) row in `origins` (directive = keyA, origin = keyB),
+ * plus the daily counter and one sample. `detail` is type-specific JSON kept on the row.
+ */
+export function recordGeneric(
+  db: Db, site: Site, reportType: string, keyA: string, keyB: string, category: string, page: string,
+  sample: SampleInput, now: number, detail?: object,
 ): RecordResult {
+  const detailJson = detail === undefined ? null : JSON.stringify(detail);
   const tx = db.transaction((): RecordResult => {
     const existing = db
-      .prepare("SELECT id, status, last_seen FROM origins WHERE site_id = ? AND report_type = 'csp-violation' AND directive = ? AND origin = ?")
-      .get(site.id, e.directive, e.origin) as { id: number; status: RecordResult['status']; last_seen: number } | undefined;
+      .prepare('SELECT id, status, last_seen FROM origins WHERE site_id = ? AND report_type = ? AND directive = ? AND origin = ?')
+      .get(site.id, reportType, keyA, keyB) as { id: number; status: RecordResult['status']; last_seen: number } | undefined;
 
     let result: RecordResult;
     if (existing) {
-      db.prepare('UPDATE origins SET count = count + 1, last_seen = ? WHERE id = ?').run(now, existing.id);
+      db.prepare('UPDATE origins SET count = count + 1, last_seen = ?, detail = COALESCE(?, detail) WHERE id = ?')
+        .run(now, detailJson, existing.id);
       result = { originId: existing.id, isNewRow: false, status: existing.status, previousLastSeen: existing.last_seen };
     } else {
       let status: RecordResult['status'] = 'new';
-      if (isCovered(db, site.id, e.origin, e.directive)) {
+      if (isCovered(db, site.id, keyB, keyA)) {
         status = 'approved';
-      } else if (db.prepare("SELECT 1 FROM origins WHERE site_id = ? AND origin = ? AND status = 'suspect' LIMIT 1").get(site.id, e.origin)) {
+      } else if (db.prepare("SELECT 1 FROM origins WHERE site_id = ? AND report_type = ? AND origin = ? AND status = 'suspect' LIMIT 1").get(site.id, reportType, keyB)) {
         status = 'suspect';
       }
       const info = db
-        .prepare('INSERT INTO origins (site_id, directive, origin, category, status, first_seen, last_seen, count, first_page) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)')
-        .run(site.id, e.directive, e.origin, e.category, status, now, now, e.page);
+        .prepare('INSERT INTO origins (site_id, report_type, directive, origin, category, status, first_seen, last_seen, count, first_page, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)')
+        .run(site.id, reportType, keyA, keyB, category, status, now, now, page, detailJson);
       result = { originId: Number(info.lastInsertRowid), isNewRow: true, status, previousLastSeen: null };
     }
 
     db.prepare(
-      "INSERT INTO daily_counts (site_id, report_type, directive, origin, day, count) VALUES (?, 'csp-violation', ?, ?, ?, 1) ON CONFLICT DO UPDATE SET count = count + 1",
-    ).run(site.id, e.directive, e.origin, utcDay(now));
+      'INSERT INTO daily_counts (site_id, report_type, directive, origin, day, count) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT DO UPDATE SET count = count + 1',
+    ).run(site.id, reportType, keyA, keyB, utcDay(now));
 
     db.prepare(
-      "INSERT INTO samples (site_id, origin_id, report_type, received_at, page, source_file, script_sample, line, ua, disposition, body) VALUES (?, ?, 'csp-violation', ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run(site.id, result.originId, now, e.page, e.sourceFile, e.sample, e.line, e.ua, e.disposition, bodyOf(e, raw));
+      'INSERT INTO samples (site_id, origin_id, report_type, received_at, page, source_file, script_sample, line, ua, disposition, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run(site.id, result.originId, reportType, now, page, sample.sourceFile, sample.sample, sample.line, sample.ua, sample.disposition, sample.body);
 
     return result;
   });
   return tx();
+}
+
+export function recordCspEvent(
+  db: Db, site: Site, e: CspEvent, now: number, raw?: Record<string, unknown>,
+): RecordResult {
+  return recordGeneric(db, site, 'csp-violation', e.directive, e.origin, e.category, e.page, {
+    sourceFile: e.sourceFile, sample: e.sample, line: e.line, ua: e.ua, disposition: e.disposition, body: bodyOf(e, raw),
+  }, now);
 }
 
 export function recordNoise(db: Db, siteId: number, reason: NoiseReason | 'rate-limit' | 'invalid', now: number): void {
@@ -110,14 +130,14 @@ function insertApproval(db: Db, siteId: number | null, pattern: string, directiv
 export function approveOrigin(db: Db, siteId: number, origin: string, scope: 'site' | 'global', now: number): void {
   db.transaction(() => {
     const directives = (db
-      .prepare('SELECT DISTINCT directive FROM origins WHERE site_id = ? AND origin = ?')
+      .prepare("SELECT DISTINCT directive FROM origins WHERE site_id = ? AND report_type = 'csp-violation' AND origin = ?")
       .all(siteId, origin) as { directive: string }[]).map(r => r.directive);
     for (const d of directives) {
       insertApproval(db, scope === 'global' ? null : siteId, origin, d, now);
       if (scope === 'global') {
-        db.prepare("UPDATE origins SET status = 'approved' WHERE origin = ? AND directive = ?").run(origin, d);
+        db.prepare("UPDATE origins SET status = 'approved' WHERE report_type = 'csp-violation' AND origin = ? AND directive = ?").run(origin, d);
       } else {
-        db.prepare("UPDATE origins SET status = 'approved' WHERE site_id = ? AND origin = ? AND directive = ?").run(siteId, origin, d);
+        db.prepare("UPDATE origins SET status = 'approved' WHERE site_id = ? AND report_type = 'csp-violation' AND origin = ? AND directive = ?").run(siteId, origin, d);
       }
     }
   })();
@@ -130,8 +150,8 @@ export function addApprovalPattern(
   db.transaction(() => {
     for (const d of directives) insertApproval(db, siteId, pattern, d, now);
     const rows = (siteId === null
-      ? db.prepare("SELECT id, origin, directive FROM origins WHERE status IN ('new', 'suspect')").all()
-      : db.prepare("SELECT id, origin, directive FROM origins WHERE site_id = ? AND status IN ('new', 'suspect')").all(siteId)
+      ? db.prepare("SELECT id, origin, directive FROM origins WHERE report_type = 'csp-violation' AND status IN ('new', 'suspect')").all()
+      : db.prepare("SELECT id, origin, directive FROM origins WHERE site_id = ? AND report_type = 'csp-violation' AND status IN ('new', 'suspect')").all(siteId)
     ) as { id: number; origin: string; directive: string }[];
     const upd = db.prepare("UPDATE origins SET status = 'approved' WHERE id = ?");
     for (const r of rows) {
@@ -142,7 +162,7 @@ export function addApprovalPattern(
 
 /** Marks every row of the origin on this site as suspect (an explicit user action: overrides approved too). */
 export function markSuspect(db: Db, siteId: number, origin: string): void {
-  db.prepare("UPDATE origins SET status = 'suspect' WHERE site_id = ? AND origin = ?").run(siteId, origin);
+  db.prepare("UPDATE origins SET status = 'suspect' WHERE site_id = ? AND report_type = 'csp-violation' AND origin = ?").run(siteId, origin);
 }
 
 /**

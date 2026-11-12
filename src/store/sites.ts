@@ -98,7 +98,7 @@ export function startLearning(db: Db, id: number, now: number, days: number): vo
 }
 
 /** Report-derived tables keyed by site (approvals are configuration and are kept by clearSiteData). */
-const SITE_DATA_TABLES = ['samples', 'pending_alerts', 'daily_counts', 'noise_counts', 'discarded', 'origins'] as const;
+const SITE_DATA_TABLES = ['samples', 'pending_alerts', 'daily_counts', 'noise_counts', 'discarded', 'window_counts', 'reminders', 'origins'] as const;
 
 /** Deletes every report-derived row of a site; the site, its key, settings and approvals stay. */
 export function clearSiteData(db: Db, id: number): void {

@@ -17,12 +17,15 @@ function seeded() {
       .run(site.id, originId, 'new-origin', NOW - 1000);
     d.db.prepare('INSERT INTO approvals (site_id, pattern, directive, created_at) VALUES (?, ?, ?, ?)')
       .run(site.id, 'https://ok.example', 'img-src', NOW - 1000);
-    d.deps.known.add(site.id, 'script-src', 'https://evil.example');
+    d.db.prepare("INSERT INTO discarded (site_id, received_at, reason, body) VALUES (?, ?, 'bot', '{}')").run(site.id, NOW - 1000);
+    d.db.prepare("INSERT INTO window_counts (site_id, report_type, k, bucket, count) VALUES (?, 'network-error', 'k', 1, 1)").run(site.id);
+    d.db.prepare("INSERT INTO reminders (site_id, kind, ref, due_at) VALUES (?, 'deprecation-reminder', 'r', ?)").run(site.id, NOW);
+    d.deps.known.add(site.id, 'csp-violation', 'script-src', 'https://evil.example');
   }
   return { ...d, a: getSite(d.db, a.id)!, b: getSite(d.db, b.id)! };
 }
 
-const TABLES = ['origins', 'samples', 'daily_counts', 'noise_counts', 'pending_alerts', 'approvals'] as const;
+const TABLES = ['origins', 'samples', 'daily_counts', 'noise_counts', 'pending_alerts', 'discarded', 'window_counts', 'reminders', 'approvals'] as const;
 function counts(db: ReturnType<typeof dash>['db'], siteId: number) {
   const out: Record<string, number> = {};
   for (const t of TABLES) {
@@ -45,14 +48,14 @@ describe('danger zone', () => {
     const res = await post(`/sites/${a.id}/clear-data`, { confirm: 'Sito A' });
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toBe(`/sites/${a.id}`);
-    expect(counts(db, a.id)).toEqual({ origins: 0, samples: 0, daily_counts: 0, noise_counts: 0, pending_alerts: 0, approvals: 1 });
+    expect(counts(db, a.id)).toEqual({ origins: 0, samples: 0, daily_counts: 0, noise_counts: 0, pending_alerts: 0, discarded: 0, window_counts: 0, reminders: 0, approvals: 1 });
     const after = getSite(db, a.id)!;
     expect(after.key).toBe(a.key);
     expect(after.lastReportAt).toBeNull();
-    expect(deps.known.has(a.id, 'script-src', 'https://evil.example')).toBe(false);
+    expect(deps.known.has(a.id, 'csp-violation', 'script-src', 'https://evil.example')).toBe(false);
     // the other site is untouched
-    expect(counts(db, b.id)).toEqual({ origins: 1, samples: 1, daily_counts: 1, noise_counts: 1, pending_alerts: 1, approvals: 1 });
-    expect(deps.known.has(b.id, 'script-src', 'https://evil.example')).toBe(true);
+    expect(counts(db, b.id)).toEqual({ origins: 1, samples: 1, daily_counts: 1, noise_counts: 1, pending_alerts: 1, discarded: 1, window_counts: 1, reminders: 1, approvals: 1 });
+    expect(deps.known.has(b.id, 'csp-violation', 'script-src', 'https://evil.example')).toBe(true);
   });
 
   it('delete removes the site and every row that belongs to it', async () => {
@@ -61,8 +64,8 @@ describe('danger zone', () => {
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toBe('/');
     expect(getSite(db, a.id)).toBeNull();
-    expect(counts(db, a.id)).toEqual({ origins: 0, samples: 0, daily_counts: 0, noise_counts: 0, pending_alerts: 0, approvals: 0 });
-    expect(deps.known.has(a.id, 'script-src', 'https://evil.example')).toBe(false);
+    expect(counts(db, a.id)).toEqual({ origins: 0, samples: 0, daily_counts: 0, noise_counts: 0, pending_alerts: 0, discarded: 0, window_counts: 0, reminders: 0, approvals: 0 });
+    expect(deps.known.has(a.id, 'csp-violation', 'script-src', 'https://evil.example')).toBe(false);
     expect(getSite(db, b.id)).not.toBeNull();
     expect(counts(db, b.id).origins).toBe(1);
   });

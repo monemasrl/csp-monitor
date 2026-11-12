@@ -34,7 +34,7 @@ type DbOrigin = {
 
 const ALERTABLE = "o.category IN ('external', 'data', 'blob')";
 /** 'new' rows, plus 'suspect' rows with an alert still waiting to be sent. */
-const TO_REVIEW = `${ALERTABLE} AND (o.status = 'new' OR (o.status = 'suspect' AND EXISTS (
+const TO_REVIEW = `o.report_type = 'csp-violation' AND ${ALERTABLE} AND (o.status = 'new' OR (o.status = 'suspect' AND EXISTS (
   SELECT 1 FROM pending_alerts p WHERE p.origin_id = o.id AND p.sent_at IS NULL)))`;
 
 function globalApprovals(db: Db): { pattern: string; directive: string }[] {
@@ -171,7 +171,7 @@ export type SiteSummary = {
 /** Approvals to put in the suggested header: this site's, plus global ones matching an origin seen on it. */
 function suggestedSources(db: Db, siteId: number): { directive: string; pattern: string }[] {
   const own = db.prepare('SELECT directive, pattern FROM approvals WHERE site_id = ?').all(siteId) as { directive: string; pattern: string }[];
-  const seen = db.prepare('SELECT DISTINCT directive, origin FROM origins WHERE site_id = ?').all(siteId) as { directive: string; origin: string }[];
+  const seen = db.prepare("SELECT DISTINCT directive, origin FROM origins WHERE site_id = ? AND report_type = 'csp-violation'").all(siteId) as { directive: string; origin: string }[];
   const globals = globalApprovals(db).filter(g => seen.some(s => s.directive === g.directive && matchesPattern(g.pattern, s.origin)));
   // Only well-formed sources ever reach a header the user will paste into a server config.
   return [...own, ...globals].filter(a => isApprovableSource(a.pattern) || parsePattern(a.pattern) === a.pattern);
@@ -180,7 +180,7 @@ function suggestedSources(db: Db, siteId: number): { directive: string; pattern:
 export function siteSummary(db: Db, site: Site, now: number): SiteSummary {
   const globals = globalApprovals(db);
   const series = siteSeries(db, site.id, now);
-  const all = (db.prepare('SELECT * FROM origins o WHERE site_id = ? ORDER BY last_seen DESC, id DESC').all(site.id) as DbOrigin[])
+  const all = (db.prepare("SELECT * FROM origins o WHERE site_id = ? AND report_type = 'csp-violation' ORDER BY last_seen DESC, id DESC").all(site.id) as DbOrigin[])
     .map(r => toRow(r, globals));
   const known = all.filter(r => r.status === 'approved' || r.status === 'global' || r.status === 'suspect').slice(0, MAX_ROWS);
   const lastSamples = db.prepare(
@@ -212,7 +212,7 @@ export type CspData = {
 };
 
 export function cspViolations(db: Db, site: Site, now: number, raw: { directive?: string; status?: string; noise?: string }): CspData {
-  const directives = (db.prepare('SELECT DISTINCT directive FROM origins WHERE site_id = ? ORDER BY directive').all(site.id) as { directive: string }[])
+  const directives = (db.prepare("SELECT DISTINCT directive FROM origins WHERE site_id = ? AND report_type = 'csp-violation' ORDER BY directive").all(site.id) as { directive: string }[])
     .map(r => r.directive);
   const filters: CspFilters = {
     directive: raw.directive && directives.includes(raw.directive) ? raw.directive : '',
@@ -222,7 +222,7 @@ export function cspViolations(db: Db, site: Site, now: number, raw: { directive?
   const globals = globalApprovals(db);
   const rows = (db.prepare(`SELECT o.*, (SELECT s.page FROM samples s WHERE s.origin_id = o.id
       GROUP BY s.page ORDER BY COUNT(*) DESC, MAX(s.received_at) DESC LIMIT 1) top_page
-      FROM origins o WHERE o.site_id = ? ORDER BY o.count DESC, o.id`).all(site.id) as (DbOrigin & { top_page: string | null })[])
+      FROM origins o WHERE o.site_id = ? AND o.report_type = 'csp-violation' ORDER BY o.count DESC, o.id`).all(site.id) as (DbOrigin & { top_page: string | null })[])
     .map(r => ({ ...toRow(r, globals), topPage: r.top_page ?? r.first_page ?? '' }));
   const filtered = rows.filter(r => (!filters.directive || r.directive === filters.directive) && (!filters.status || r.status === filters.status));
 
@@ -272,10 +272,10 @@ export function originDetail(db: Db, site: Site, originId: number, now: number):
   if (!r) return null;
   const globals = globalApprovals(db);
   const row = toRow(r, globals);
-  const siblings = (db.prepare('SELECT * FROM origins WHERE site_id = ? AND origin = ? ORDER BY directive').all(site.id, r.origin) as DbOrigin[])
+  const siblings = (db.prepare("SELECT * FROM origins WHERE site_id = ? AND report_type = 'csp-violation' AND origin = ? ORDER BY directive").all(site.id, r.origin) as DbOrigin[])
     .map(x => toRow(x, globals));
   const sites = (db.prepare(`SELECT s.id, s.name, MIN(o.first_seen) first_seen, MAX(o.last_seen) last_seen
-      FROM origins o JOIN sites s ON s.id = o.site_id WHERE o.origin = ? GROUP BY s.id ORDER BY first_seen, s.id`)
+      FROM origins o JOIN sites s ON s.id = o.site_id WHERE o.report_type = 'csp-violation' AND o.origin = ? GROUP BY s.id ORDER BY first_seen, s.id`)
     .all(r.origin) as { id: number; name: string; first_seen: number; last_seen: number }[])
     .map(s => ({ id: s.id, name: s.name, firstSeen: s.first_seen, lastSeen: s.last_seen }));
   // inline/eval/data:/blob: are the same string on every site: only real external origins warrant the warning.

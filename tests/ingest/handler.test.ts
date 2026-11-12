@@ -26,7 +26,7 @@ let alerts: [number, number][];
 
 beforeEach(() => {
   alerts = [];
-  deps = testDeps({ onAlert: (s, o) => { alerts.push([s, o]); } });
+  deps = testDeps({ onAlert: (s, req) => { alerts.push([s, req.originId!]); } });
   site = createSite(deps.db, { name: 'S', domains: ['www.example.it'] }, T - 30 * 86_400_000);
   endLearning(deps.db, site.id, T - 1000);
 });

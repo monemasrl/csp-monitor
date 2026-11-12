@@ -28,7 +28,7 @@ export function testDeps(overrides: Partial<Deps> = {}): Deps {
     channels: [],
     limiter: new RateLimiter(),
     known: new KnownCache(),
-    onAlert: (s, o, n) => enqueueAlert(db, s, o, n),
+    onAlert: (s, req, n) => { if (req.kind === 'new-origin') enqueueAlert(db, s, req.originId!, n); },
     ...overrides,
   };
 }

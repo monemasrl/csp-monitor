@@ -38,9 +38,9 @@ describe('KnownCache', () => {
     db.prepare("INSERT INTO origins (site_id, directive, origin, category, status, first_seen, last_seen, count) VALUES (1,'script-src','https://a.example','external','new',0,0,1)").run();
     const c = new KnownCache();
     c.load(db);
-    expect(c.has(1, 'script-src', 'https://a.example')).toBe(true);
-    expect(c.has(1, 'img-src', 'https://a.example')).toBe(false);
-    c.add(1, 'img-src', 'https://a.example');
-    expect(c.has(1, 'img-src', 'https://a.example')).toBe(true);
+    expect(c.has(1, 'csp-violation', 'script-src', 'https://a.example')).toBe(true);
+    expect(c.has(1, 'csp-violation', 'img-src', 'https://a.example')).toBe(false);
+    c.add(1, 'csp-violation', 'img-src', 'https://a.example');
+    expect(c.has(1, 'csp-violation', 'img-src', 'https://a.example')).toBe(true);
   });
 });
