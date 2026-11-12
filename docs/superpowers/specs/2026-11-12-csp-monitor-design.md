@@ -24,7 +24,8 @@ L'obiettivo è la **sorveglianza di sicurezza**, non portare i siti a una CSP bl
 
 - Account per i clienti, multiutente, billing: lo usa solo Andrea.
 - Rendere bloccanti le policy o gestire il deploy degli header sui siti: l'header lo aggiunge Andrea a mano.
-- Esportazioni e prove formali per PCI DSS (l'inventario degli hash degli script invece è incluso, vedi tipo `csp-hash`).
+- Identificazione di librerie e versioni (SBOM), controllo CVE, liste di domini malevoli noti: da valutare dopo il modulo PCI DSS.
+- Certificare la conformità: il servizio produce prove per il PCI DSS, la valutazione resta del QSA.
 - Generatore automatico di policy.
 
 ## Anti-obiettivi (sarebbe un fallimento anche se funziona)
@@ -160,7 +161,21 @@ Ispirata al "Security headers checker" e al "CSP scanner" di CentralCSP. Usa gli
 - **Alert:** email quando il punteggio di sicurezza (degli header o della CSP) scende rispetto alla verifica precedente, indicando il problema nuovo che lo ha causato (header sparito, HSTS accorciato, cookie che perde un attributo, CSP indebolita). Un punteggio basso ma stabile non genera email.
 - Il calcolo esatto dei pesi è lasciato a chi costruisce, purché sia deterministico e documentato.
 
-### 9. Conservazione dei dati
+### 9. Modulo PCI DSS 6.4.3 e 11.6.1 *(richiesto da Andrea; dettagli scelti da Claude)*
+
+Ispirato alle pagine PCI DSS di report-uri e CentralCSP. Serve ai siti con pagine di pagamento proprie; per i siti che usano solo iframe o redirect del gateway va verificato sul testo ufficiale in vigore se i due requisiti si applicano. Lo scopo è **produrre prove**, non certificare.
+
+- **Perimetro:** per ogni sito un elenco di schemi di percorso "pagine di pagamento" (es. `/checkout/*`, `/cart`, `/pagamento`). Le pagine di pagamento sono automaticamente anche "sensibili" (alert immediati) e vengono aggiunte alle pagine della verifica giornaliera (sezione 7).
+- **Inventario degli script delle pagine di pagamento** (6.4.3), costruito da `csp-hash` e dalle violazioni `script-src` su quelle pagine. Ogni script ha: URL (o "inline" + pagina), hash corrente, prima e ultima vista, pagine su cui compare, **stato** (`in attesa`, `giustificato`, `rifiutato`), **giustificazione scritta** (testo, autore, data) e storico delle giustificazioni.
+- **Regole di auto-validazione:** pattern sull'URL dello script (esatto o con jolly, per sito o globali) + testo di giustificazione + politica sull'hash (`qualsiasi hash` per librerie che si aggiornano da sole come Stripe.js, oppure `hash fissato`). Uno script nuovo o con hash cambiato che corrisponde a una regola diventa `giustificato` in automatico, e l'evento resta nella cronologia con il nome della regola. Uno script che non corrisponde resta `in attesa` e genera alert.
+- **Cronologia delle modifiche** (11.6.1) per sito, filtrabile per pagina: script comparso, hash cambiato, script sparito (non più visto sulle pagine di pagamento da 7 giorni mentre le pagine continuano a mandare report), origine nuova, header modificato, giustificazione registrata o cambiata, regola applicata, revisione completata. Ogni evento ha data, prima/dopo, autore (persona o regola).
+- **Modifiche agli header delle pagine di pagamento:** a ogni verifica si confrontano gli header di sicurezza (CSP, HSTS, Permissions-Policy, COOP/COEP, Referrer-Policy, X-Content-Type-Options, Set-Cookie degli attributi) con l'ultima versione **autorizzata**, mascherando i valori che cambiano per costruzione (nonce). Qualsiasi differenza genera un evento e un alert immediato, finché Andrea non la autorizza con una nota; da quel momento la nuova versione è quella di riferimento.
+- **Revisione periodica:** nella pagina PCI un'azione "Revisione completata" con nota, registrata nella cronologia. Se passano 7 giorni senza revisione, email di promemoria.
+- **Alert:** script in attesa, hash cambiato non coperto da regole, origine nuova e header modificato sulle pagine di pagamento partono **subito** (senza i 10 minuti di raggruppamento).
+- **Esportazioni per l'auditor:** per un periodo scelto, CSV separati (inventario con giustificazioni, cronologia, storico degli header autorizzati, alert e risoluzione) e un PDF di sintesi: perimetro, metodo di raccolta (report del browser, nessun agente sulla pagina), frequenza delle verifiche, inventario con stato e giustificazione, cronologia, revisioni effettuate, alert e come sono stati chiusi.
+- **Conservazione:** cronologia, giustificazioni, revisioni e storico degli header delle pagine di pagamento si tengono almeno 13 mesi, indipendentemente dalle altre regole di pulizia.
+
+### 10. Conservazione dei dati
 
 - Contatori e tabella origini: per sempre (sono piccoli).
 - Contatori aggregati per giorno `(sito, direttiva, origine, giorno)`: 90 giorni.
