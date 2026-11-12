@@ -28,7 +28,8 @@ function cleanUrl(v: string): string {
   const stripped = stripUrl(v);
   if (stripped) return stripped;
   const cut = v.split(/[?#]/, 1)[0]!;
-  return cut.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, '$1');
+  // Drop everything between '://' and the LAST '@' (a password may contain '/').
+  return cut.replace(/^([a-z][a-z0-9+.-]*:\/\/).*@/i, '$1');
 }
 
 /** Strings that are absolute web URLs lose query/fragment/credentials; everything else is kept. */

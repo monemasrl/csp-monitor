@@ -76,11 +76,11 @@ describe('recordCspEvent', () => {
   it('cuts query/fragment/userinfo from unparseable scheme-prefixed strings', () => {
     const { db, site } = setup();
     recordCspEvent(db, site, ev(), T0, {
-      a: 'https://a b/?token=1#f', b: 'https://[::1/?q=secret', c: 'https://u:pw@exa mple.com/x?y=1', d: ['wss://h ost/p#frag'],
+      a: 'https://a b/?token=1#f', b: 'https://[::1/?q=secret', c: 'https://u:pw@exa mple.com/x?y=1', d: ['wss://h ost/p#frag'], e: 'https://u:pw/x@bad host/?t=1', f: 'https://user:s3cret/part@bad host/',
     });
     const body = (db.prepare('SELECT body FROM samples').get() as { body: string }).body;
-    for (const bad of ['?', '#', 'token', 'secret', 'pw', 'u:pw']) expect(body).not.toContain(bad);
-    expect(JSON.parse(body)).toEqual({ a: 'https://a b/', b: 'https://[::1/', c: 'https://exa mple.com/x', d: ['wss://h ost/p'] });
+    for (const bad of ['?', '#', 'token', 'secret', 'pw', 'u:pw', 's3cret', 'user']) expect(body).not.toContain(bad);
+    expect(JSON.parse(body)).toEqual({ a: 'https://a b/', b: 'https://[::1/', c: 'https://exa mple.com/x', d: ['wss://h ost/p'], e: 'https://bad host/', f: 'https://bad host/' });
   });
 
   it('falls back to the event as body, and truncates it to 8192 chars', () => {
