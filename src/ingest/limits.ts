@@ -1,5 +1,7 @@
 import type { Db } from '../db/db.js';
 
+export const UNSEEN_PER_DAY_OVER_LIMIT = 500;
+
 /** In-memory fixed-window limiter: per-minute (floor(now/60000)) and per-UTC-day (floor(now/86400000)) counters per site. */
 export class RateLimiter {
   private readonly state = new Map<number, { minute: number; minuteCount: number; day: number; dayCount: number }>();
@@ -18,6 +20,21 @@ export class RateLimiter {
     if (s.minuteCount >= perMin || s.dayCount >= perDay) return false;
     s.minuteCount++;
     s.dayCount++;
+    return true;
+  }
+
+  private readonly unseen = new Map<number, { day: number; count: number }>();
+
+  /** Over-limit path only: caps never-seen (directive, origin) pairs recorded per site per UTC day. */
+  allowUnseen(siteId: number, now: number): boolean {
+    const day = Math.floor(now / 86_400_000);
+    let u = this.unseen.get(siteId);
+    if (!u || u.day !== day) {
+      u = { day, count: 0 };
+      this.unseen.set(siteId, u);
+    }
+    if (u.count >= UNSEEN_PER_DAY_OVER_LIMIT) return false;
+    u.count++;
     return true;
   }
 }

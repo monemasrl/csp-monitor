@@ -21,6 +21,16 @@ describe('RateLimiter', () => {
   });
 });
 
+describe('allowUnseen', () => {
+  it('allows 500 per site per UTC day', () => {
+    const l = new RateLimiter();
+    for (let i = 0; i < 500; i++) expect(l.allowUnseen(1, T)).toBe(true);
+    expect(l.allowUnseen(1, T)).toBe(false);
+    expect(l.allowUnseen(2, T)).toBe(true);
+    expect(l.allowUnseen(1, T + 86_400_000)).toBe(true);
+  });
+});
+
 describe('KnownCache', () => {
   it('add/has and load from origins', () => {
     const db = openDb(':memory:');

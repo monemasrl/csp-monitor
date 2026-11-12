@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Config } from '../config.js';
 import type { Db } from '../db/db.js';
-import { ingest } from '../ingest/handler.js';
+import { errId, ingest } from '../ingest/handler.js';
 import type { KnownCache, RateLimiter } from '../ingest/limits.js';
 import { recordNoise } from '../store/origins.js';
 import { getSiteByKey } from '../store/sites.js';
@@ -72,8 +72,8 @@ export function createApp(deps: Deps): Hono {
       } else {
         ingest(deps, key, c.req.header('content-type'), text, deps.now());
       }
-    } catch {
-      console.error('collect: unexpected failure');
+    } catch (e) {
+      console.error('collect: unexpected failure', errId(e));
     }
     return empty204();
   });

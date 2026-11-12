@@ -81,6 +81,22 @@ describe('ingest', () => {
     expect(countNoise(deps.db, site.id, 'rate-limit')).toBeGreaterThan(0);
     expect(deps.db.prepare("SELECT COUNT(*) n FROM origins WHERE origin = 'https://evil.example'").get()).toEqual({ n: 1 });
   });
+  it('caps never-seen origins past the rate limit at 500 per UTC day', () => {
+    deps.db.prepare('UPDATE sites SET rate_per_min = 1 WHERE id = ?').run(site.id);
+    site = { ...site, ratePerMin: 1 };
+    const send = (i: number, now: number) =>
+      ingest(deps, site.key, CT, legacy({ blockedURL: `https://h${i}.example/a.js` }), now);
+    send(0, T); // consumes the single in-limit slot
+    for (let i = 1; i <= 500; i++) send(i, T);
+    expect(deps.db.prepare('SELECT COUNT(*) n FROM origins').get()).toEqual({ n: 501 });
+    send(501, T);
+    expect(deps.db.prepare('SELECT COUNT(*) n FROM origins').get()).toEqual({ n: 501 });
+    expect(countNoise(deps.db, site.id, 'rate-limit')).toBe(1);
+    const next = T + 86_400_000;
+    send(502, next); // new minute: within limit anyway
+    send(503, next); // over limit, new UTC day: unseen allowed again
+    expect(deps.db.prepare('SELECT COUNT(*) n FROM origins').get()).toEqual({ n: 503 });
+  });
   it('never stores query strings or IPs', () => {
     ingest(deps, site.key, CT, legacy({ blockedURL: 'https://evil.example/x.js?token=1' }), T);
     for (const table of ['samples', 'origins']) {
