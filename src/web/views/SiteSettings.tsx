@@ -1,3 +1,4 @@
+import { HEADER_FEATURES, type HeaderFeature } from '../../headers.js';
 import type { Site } from '../../store/sites.js';
 import { fmtDateTime } from '../format.js';
 import type { NavData } from '../queries.js';
@@ -10,8 +11,21 @@ export function siteToForm(site: Site): SiteForm {
   return {
     name: site.name, domains: site.domains.join('\n'),
     rate_per_min: String(site.ratePerMin), rate_per_day: String(site.ratePerDay),
+    sensitive_paths: site.sensitivePaths.join('\n'), features: site.enabledHeaders,
   };
 }
+
+const FEATURE_TEXT: Record<HeaderFeature, [string, string]> = {
+  csp: ['Content Security Policy', 'Sempre attiva: è la base di tutto il monitoraggio.'],
+  'csp-hash': ['Hash degli script', 'Inventario degli script eseguiti e avviso se uno cambia (solo Chromium).'],
+  nel: ['Errori di rete (NEL)', 'Errori di connessione visti dai visitatori (Chrome ed Edge).'],
+  permissions: ['Permissions-Policy', 'Uso di camera, microfono, posizione e altre funzioni sensibili.'],
+  coop: ['Cross-Origin-Opener-Policy', 'Cosa si romperebbe isolando la finestra.'],
+  coep: ['Cross-Origin-Embedder-Policy', 'Risorse esterne senza CORP: attenzione al rumore.'],
+  document: ['Document-Policy', 'Chiamate XHR sincrone.'],
+  integrity: ['Integrità (SRI)', 'Script esterni senza attributo integrity o con hash errato.'],
+  connection: ['Connessioni non dichiarate', 'Sperimentale: connessioni verso domini non dichiarati.'],
+};
 
 export function EndLearning(props: { site: Site; now: number }) {
   if (props.now >= props.site.learningUntil) return null;
@@ -86,6 +100,27 @@ export function SiteSettings(props: {
               <input name="rate_per_day" value={form.rate_per_day} inputmode="numeric" required />
             </label>
           </div>
+          <label class="field">Pagine sensibili
+            <textarea name="sensitive_paths" rows={4} placeholder="/checkout">{form.sensitive_paths ?? ''}</textarea>
+            <small>Uno per riga, inizia con /, per esempio /checkout o /login. Gli alert su queste pagine partono subito, senza raggruppamento.</small>
+          </label>
+          <fieldset>
+            <legend>Header da attivare</legend>
+            <div class="checks feature-list">
+              {HEADER_FEATURES.map((f) => {
+                const [name, text] = FEATURE_TEXT[f];
+                const checked = f === 'csp' || (form.features ?? []).includes(f);
+                return (
+                  <label>
+                    {f === 'csp'
+                      ? <><input type="checkbox" checked disabled /><input type="hidden" name="features" value="csp" /></>
+                      : <input type="checkbox" name="features" value={f} checked={checked} />}
+                    <span><b>{name}</b> <span class="muted">{text}</span></span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
           <small class="muted">Oltre il tetto i report vengono scartati e contati; le origini mai viste vengono comunque registrate.</small>
           <div class="row"><button type="submit" class="pri">Salva</button></div>
         </form>

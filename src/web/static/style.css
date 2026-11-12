@@ -120,3 +120,12 @@ body > main label{display:flex;flex-direction:column;gap:6px;font-size:13px}
 .danger-row p{margin:0;font-size:13px;max-width:52ch}
 .danger-confirm{display:flex;flex-direction:column;gap:6px;min-width:240px}
 .danger-confirm label{font-size:12px}
+
+.tile-row{margin-top:14px}
+a.tile{display:flex;flex-direction:column;gap:4px;align-items:flex-start;border:1px solid #E3E6EB;border-radius:8px;padding:12px;color:inherit;text-decoration:none}
+a.tile:hover{background:#F5F6F8}
+a.tile.off{background:#F5F6F8;color:#7B8290}
+.tile-name{font-size:13px;font-weight:500}
+a.tile .big{font-size:22px;font-weight:600}
+.feature-list{flex-direction:column}
+.feature-list label{align-items:flex-start}

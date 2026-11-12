@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { readFileSync } from 'node:fs';
+import { migrate } from './migrations.js';
 
 export type Db = Database.Database;
 
@@ -10,5 +11,6 @@ export function openDb(file: string): Db {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(schema);
+  migrate(db);
   return db;
 }

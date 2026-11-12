@@ -26,7 +26,7 @@ let alerts: [number, number][];
 
 beforeEach(() => {
   alerts = [];
-  deps = testDeps({ onAlert: (s, o) => { alerts.push([s, o]); } });
+  deps = testDeps({ onAlert: (s, req) => { alerts.push([s, req.originId!]); } });
   site = createSite(deps.db, { name: 'S', domains: ['www.example.it'] }, T - 30 * 86_400_000);
   endLearning(deps.db, site.id, T - 1000);
 });
@@ -58,7 +58,7 @@ describe('ingest', () => {
     expect(countNoise(deps.db, site.id, 'invalid')).toBe(1);
   });
   it('ignores non-csp report types silently', () => {
-    ingest(deps, site.key, 'application/reports+json', JSON.stringify([{ type: 'deprecation', body: { id: 'x' } }]), T);
+    ingest(deps, site.key, 'application/reports+json', JSON.stringify([{ type: 'unknown-x', body: { id: 'x' } }]), T);
     expect(countNoise(deps.db, site.id, 'invalid')).toBe(0);
     expect(deps.db.prepare('SELECT COUNT(*) n FROM samples').get()).toEqual({ n: 0 });
   });

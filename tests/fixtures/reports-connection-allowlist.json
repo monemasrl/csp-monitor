@@ -1,0 +1,14 @@
+[
+  {
+    "type": "connection-allowlist",
+    "url": "https://www.gida-spa.it/checkout/step2",
+    "age": 5,
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "body": {
+      "documentURL": "https://www.gida-spa.it/checkout/step2",
+      "blockedURL": "https://tracker.example.net/collect?id=9",
+      "type": "fetch",
+      "disposition": "enforce"
+    }
+  }
+]

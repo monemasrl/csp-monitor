@@ -3,14 +3,16 @@ import type { Db } from '../db/db.js';
 import { BUILTIN_NOISE } from '../ingest/noise.js';
 import { isRiskyWildcard, matchesPattern } from '../match.js';
 import { listDiscarded, type Discarded } from '../store/discarded.js';
+import { approvalDirective } from '../store/origins.js';
 import { listSites, type Site } from '../store/sites.js';
 import { utcDay } from '../time.js';
 import { isApprovableSource, parsePattern } from './validate.js';
+import { TYPE_PAGES, type TypePageDef } from './typePages.js';
 
 const DAY = 86_400_000;
 const SILENT_AFTER = 3 * DAY;
 const NEVER_SEEN_GRACE = DAY;
-const MAX_ROWS = 500;
+export const MAX_ROWS = 500;
 
 export type StatusKey = 'new' | 'approved' | 'global' | 'suspect' | 'dashboard';
 export const STATUS_KEYS: StatusKey[] = ['new', 'approved', 'global', 'suspect', 'dashboard'];
@@ -34,7 +36,7 @@ type DbOrigin = {
 
 const ALERTABLE = "o.category IN ('external', 'data', 'blob')";
 /** 'new' rows, plus 'suspect' rows with an alert still waiting to be sent. */
-const TO_REVIEW = `${ALERTABLE} AND (o.status = 'new' OR (o.status = 'suspect' AND EXISTS (
+const TO_REVIEW = `o.report_type = 'csp-violation' AND ${ALERTABLE} AND (o.status = 'new' OR (o.status = 'suspect' AND EXISTS (
   SELECT 1 FROM pending_alerts p WHERE p.origin_id = o.id AND p.sent_at IS NULL)))`;
 
 function globalApprovals(db: Db): { pattern: string; directive: string }[] {
@@ -169,18 +171,22 @@ export type SiteSummary = {
 };
 
 /** Approvals to put in the suggested header: this site's, plus global ones matching an origin seen on it. */
-function suggestedSources(db: Db, siteId: number): { directive: string; pattern: string }[] {
+export function suggestedSources(db: Db, siteId: number): { directive: string; pattern: string }[] {
   const own = db.prepare('SELECT directive, pattern FROM approvals WHERE site_id = ?').all(siteId) as { directive: string; pattern: string }[];
-  const seen = db.prepare('SELECT DISTINCT directive, origin FROM origins WHERE site_id = ?').all(siteId) as { directive: string; origin: string }[];
+  const seen = db.prepare("SELECT DISTINCT directive, origin FROM origins WHERE site_id = ? AND report_type = 'csp-violation'").all(siteId) as { directive: string; origin: string }[];
   const globals = globalApprovals(db).filter(g => seen.some(s => s.directive === g.directive && matchesPattern(g.pattern, s.origin)));
-  // Only well-formed sources ever reach a header the user will paste into a server config.
-  return [...own, ...globals].filter(a => isApprovableSource(a.pattern) || parsePattern(a.pattern) === a.pattern);
+  // Only well-formed sources ever reach a header the user will paste into a server config; approvals of
+  // other report types share the table (directive = their keyA, e.g. 'camera') and must stay out of it.
+  return [...own, ...globals].filter(a => isCspDirective(a.directive) && (isApprovableSource(a.pattern) || parsePattern(a.pattern) === a.pattern));
 }
+
+const CSP_SOURCE_DIRECTIVES = ['form-action', 'frame-ancestors', 'base-uri', 'navigate-to'];
+const isCspDirective = (d: string): boolean => /^[a-z]+(-[a-z]+)*-src(-elem|-attr)?$/.test(d) || CSP_SOURCE_DIRECTIVES.includes(d);
 
 export function siteSummary(db: Db, site: Site, now: number): SiteSummary {
   const globals = globalApprovals(db);
   const series = siteSeries(db, site.id, now);
-  const all = (db.prepare('SELECT * FROM origins o WHERE site_id = ? ORDER BY last_seen DESC, id DESC').all(site.id) as DbOrigin[])
+  const all = (db.prepare("SELECT * FROM origins o WHERE site_id = ? AND report_type = 'csp-violation' ORDER BY last_seen DESC, id DESC").all(site.id) as DbOrigin[])
     .map(r => toRow(r, globals));
   const known = all.filter(r => r.status === 'approved' || r.status === 'global' || r.status === 'suspect').slice(0, MAX_ROWS);
   const lastSamples = db.prepare(
@@ -203,31 +209,14 @@ export function siteSummary(db: Db, site: Site, now: number): SiteSummary {
   };
 }
 
-export type CspFilters = { directive: string; status: StatusKey | ''; noise: boolean };
-export type CspRow = OriginRow & { topPage: string };
-export type CspData = {
-  site: Site; filters: CspFilters; directives: string[]; rows: CspRow[]; truncated: boolean; series: Series;
-  browsers: { name: string; pct: number }[]; noise30: ReasonCount[];
-  totals: { reports30: number; external: number; approved: number; review: number };
-};
+export type BrowserShare = { name: string; pct: number }[];
 
-export function cspViolations(db: Db, site: Site, now: number, raw: { directive?: string; status?: string; noise?: string }): CspData {
-  const directives = (db.prepare('SELECT DISTINCT directive FROM origins WHERE site_id = ? ORDER BY directive').all(site.id) as { directive: string }[])
-    .map(r => r.directive);
-  const filters: CspFilters = {
-    directive: raw.directive && directives.includes(raw.directive) ? raw.directive : '',
-    status: STATUS_KEYS.includes(raw.status as StatusKey) ? (raw.status as StatusKey) : '',
-    noise: raw.noise === '1',
-  };
-  const globals = globalApprovals(db);
-  const rows = (db.prepare(`SELECT o.*, (SELECT s.page FROM samples s WHERE s.origin_id = o.id
-      GROUP BY s.page ORDER BY COUNT(*) DESC, MAX(s.received_at) DESC LIMIT 1) top_page
-      FROM origins o WHERE o.site_id = ? ORDER BY o.count DESC, o.id`).all(site.id) as (DbOrigin & { top_page: string | null })[])
-    .map(r => ({ ...toRow(r, globals), topPage: r.top_page ?? r.first_page ?? '' }));
-  const filtered = rows.filter(r => (!filters.directive || r.directive === filters.directive) && (!filters.status || r.status === filters.status));
-
-  const uas = db.prepare('SELECT ua, COUNT(*) n FROM samples WHERE site_id = ? AND received_at >= ? GROUP BY ua')
-    .all(site.id, now - 30 * DAY) as { ua: string | null; n: number }[];
+/** Share of samples by browser family over 30 days (top 4 plus "Altri"); all types unless `reportType` is given. */
+export function browserShare(db: Db, siteId: number, now: number, reportType?: string): BrowserShare {
+  const uas = (reportType === undefined
+    ? db.prepare('SELECT ua, COUNT(*) n FROM samples WHERE site_id = ? AND received_at >= ? GROUP BY ua').all(siteId, now - 30 * DAY)
+    : db.prepare('SELECT ua, COUNT(*) n FROM samples WHERE site_id = ? AND report_type = ? AND received_at >= ? GROUP BY ua')
+      .all(siteId, reportType, now - 30 * DAY)) as { ua: string | null; n: number }[];
   const families = new Map<string, number>();
   for (const u of uas) {
     const name = (u.ua ?? '').replace(/\s+\d+$/, '') || 'Altro';
@@ -238,9 +227,34 @@ export function cspViolations(db: Db, site: Site, now: number, raw: { directive?
   const top = sorted.slice(0, 4);
   const rest = sorted.slice(4).reduce((a, [, n]) => a + n, 0);
   if (rest > 0) top.push(['Altri', rest]);
-  const browsers = top.map(([name, n]) => ({ name, pct: total > 0 ? Math.round((n / total) * 100) : 0 }));
+  return top.map(([name, n]) => ({ name, pct: total > 0 ? Math.round((n / total) * 100) : 0 }));
+}
 
-  const series = siteSeries(db, site.id, now);
+export type CspFilters = { directive: string; status: StatusKey | ''; noise: boolean };
+export type CspRow = OriginRow & { topPage: string };
+export type CspData = {
+  site: Site; filters: CspFilters; directives: string[]; rows: CspRow[]; truncated: boolean; series: Series;
+  browsers: BrowserShare; noise30: ReasonCount[];
+  totals: { reports30: number; external: number; approved: number; review: number };
+};
+
+export function cspViolations(db: Db, site: Site, now: number, raw: { directive?: string; status?: string; noise?: string }): CspData {
+  const directives = (db.prepare("SELECT DISTINCT directive FROM origins WHERE site_id = ? AND report_type = 'csp-violation' ORDER BY directive").all(site.id) as { directive: string }[])
+    .map(r => r.directive);
+  const filters: CspFilters = {
+    directive: raw.directive && directives.includes(raw.directive) ? raw.directive : '',
+    status: STATUS_KEYS.includes(raw.status as StatusKey) ? (raw.status as StatusKey) : '',
+    noise: raw.noise === '1',
+  };
+  const globals = globalApprovals(db);
+  const rows = (db.prepare(`SELECT o.*, (SELECT s.page FROM samples s WHERE s.origin_id = o.id
+      GROUP BY s.page ORDER BY COUNT(*) DESC, MAX(s.received_at) DESC LIMIT 1) top_page
+      FROM origins o WHERE o.site_id = ? AND o.report_type = 'csp-violation' ORDER BY o.count DESC, o.id`).all(site.id) as (DbOrigin & { top_page: string | null })[])
+    .map(r => ({ ...toRow(r, globals), topPage: r.top_page ?? r.first_page ?? '' }));
+  const filtered = rows.filter(r => (!filters.directive || r.directive === filters.directive) && (!filters.status || r.status === filters.status));
+
+  const browsers = browserShare(db, site.id, now, 'csp-violation');
+  const series = typeSeries(db, site.id, 'csp-violation', now);
   const external = rows.filter(r => r.category !== 'inline' && r.category !== 'eval' && r.category !== 'self');
   return {
     site, filters, directives, rows: filtered.slice(0, MAX_ROWS), truncated: filtered.length > MAX_ROWS, series, browsers,
@@ -261,9 +275,10 @@ export type OriginDetailData = {
 };
 
 /** Origin row by id, only if it belongs to the site. */
-export function originOfSite(db: Db, siteId: number, originId: number): { origin: string; category: string } | null {
-  const r = db.prepare('SELECT origin, category FROM origins WHERE id = ? AND site_id = ?').get(originId, siteId) as
-    { origin: string; category: string } | undefined;
+export function originOfSite(db: Db, siteId: number, originId: number):
+  { origin: string; category: string; reportType: string; directive: string } | null {
+  const r = db.prepare('SELECT origin, category, report_type reportType, directive FROM origins WHERE id = ? AND site_id = ?').get(originId, siteId) as
+    { origin: string; category: string; reportType: string; directive: string } | undefined;
   return r ?? null;
 }
 
@@ -272,10 +287,10 @@ export function originDetail(db: Db, site: Site, originId: number, now: number):
   if (!r) return null;
   const globals = globalApprovals(db);
   const row = toRow(r, globals);
-  const siblings = (db.prepare('SELECT * FROM origins WHERE site_id = ? AND origin = ? ORDER BY directive').all(site.id, r.origin) as DbOrigin[])
+  const siblings = (db.prepare("SELECT * FROM origins WHERE site_id = ? AND report_type = 'csp-violation' AND origin = ? ORDER BY directive").all(site.id, r.origin) as DbOrigin[])
     .map(x => toRow(x, globals));
   const sites = (db.prepare(`SELECT s.id, s.name, MIN(o.first_seen) first_seen, MAX(o.last_seen) last_seen
-      FROM origins o JOIN sites s ON s.id = o.site_id WHERE o.origin = ? GROUP BY s.id ORDER BY first_seen, s.id`)
+      FROM origins o JOIN sites s ON s.id = o.site_id WHERE o.report_type = 'csp-violation' AND o.origin = ? GROUP BY s.id ORDER BY first_seen, s.id`)
     .all(r.origin) as { id: number; name: string; first_seen: number; last_seen: number }[])
     .map(s => ({ id: s.id, name: s.name, firstSeen: s.first_seen, lastSeen: s.last_seen }));
   // inline/eval/data:/blob: are the same string on every site: only real external origins warrant the warning.
@@ -326,4 +341,93 @@ export function addNoisePattern(db: Db, pattern: string, now: number): void {
 
 export function deleteNoisePattern(db: Db, id: number): void {
   db.prepare('DELETE FROM noise_patterns WHERE id = ?').run(id);
+}
+
+// --- report type pages (all types except csp-violation, which has its own queries above) ---
+
+export type TypeRow = Omit<OriginRow, 'category'> & {
+  detail: Record<string, unknown>;
+  /** Fields of the most recent sample ('' / null when there is none). */
+  last: { page: string; sourceFile: string; sample: string; line: number | null; ua: string; disposition: string };
+};
+
+function parseDetail(text: string | null): Record<string, unknown> {
+  try {
+    const v: unknown = JSON.parse(text ?? 'null');
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Rows of one report type on the site, most reported first. */
+export function typeRows(db: Db, siteId: number, reportType: string): TypeRow[] {
+  const globals = new Set((db.prepare('SELECT pattern, directive FROM approvals WHERE site_id IS NULL').all() as
+    { pattern: string; directive: string }[]).map(g => `${g.directive}\n${g.pattern}`));
+  const rows = db.prepare(`SELECT o.*, s.page s_page, s.source_file s_source, s.script_sample s_sample, s.line s_line,
+      s.ua s_ua, s.disposition s_disp FROM origins o LEFT JOIN samples s ON s.id = (SELECT MAX(id) FROM samples WHERE origin_id = o.id)
+      WHERE o.site_id = ? AND o.report_type = ? ORDER BY o.count DESC, o.id`).all(siteId, reportType) as (DbOrigin & {
+    detail: string | null; s_page: string | null; s_source: string | null; s_sample: string | null; s_line: number | null;
+    s_ua: string | null; s_disp: string | null;
+  })[];
+  return rows.map(r => ({
+    id: r.id, siteId: r.site_id, directive: r.directive, origin: r.origin,
+    // approvals of these types are exact (pattern = keyB), so 'globale' is an exact match too
+    status: r.status === 'approved' ? (globals.has(`${approvalDirective(reportType, r.directive)}\n${r.origin}`) ? 'global' : 'approved') : r.status === 'suspect' ? 'suspect' : 'new',
+    firstSeen: r.first_seen, lastSeen: r.last_seen, count: r.count, firstPage: r.first_page ?? '',
+    detail: parseDetail(r.detail),
+    last: {
+      page: r.s_page ?? '', sourceFile: r.s_source ?? '', sample: r.s_sample ?? '', line: r.s_line,
+      ua: r.s_ua ?? '', disposition: r.s_disp ?? '',
+    },
+  }));
+}
+
+export type TypeStats = {
+  reports30: number; reports7: number; rows: number; keysA: number; keysB: number; newRows: number; new7: number;
+  pages30: number; enforce30: number;
+};
+
+/** Counters the type pages build their three numbers from. */
+export function typeStats(db: Db, siteId: number, reportType: string, now: number): TypeStats {
+  const sum = (from: string) => (db.prepare('SELECT COALESCE(SUM(count), 0) n FROM daily_counts WHERE site_id = ? AND report_type = ? AND day >= ?')
+    .get(siteId, reportType, from) as { n: number }).n;
+  const o = db.prepare(`SELECT COUNT(*) rows, COUNT(DISTINCT directive) keysA, COUNT(DISTINCT origin) keysB,
+      COALESCE(SUM(status = 'new'), 0) newRows, COALESCE(SUM(first_seen >= ?), 0) new7 FROM origins WHERE site_id = ? AND report_type = ?`)
+    .get(now - 7 * DAY, siteId, reportType) as { rows: number; keysA: number; keysB: number; newRows: number; new7: number };
+  const s = db.prepare(`SELECT COUNT(DISTINCT page) pages30, COALESCE(SUM(disposition = 'enforce'), 0) enforce30
+      FROM samples WHERE site_id = ? AND report_type = ? AND received_at >= ?`).get(siteId, reportType, now - 30 * DAY) as
+    { pages30: number; enforce30: number };
+  return { reports30: sum(lastDays(now)[0]!), reports7: sum(lastDays(now, 7)[0]!), ...o, ...s };
+}
+
+/** Daily counts of one report type on the site, last 30 UTC days. */
+export function typeSeries(db: Db, siteId: number, reportType: string, now: number): Series {
+  const days = lastDays(now);
+  const values = days.map(() => 0);
+  const rows = db.prepare('SELECT day, SUM(count) n FROM daily_counts WHERE site_id = ? AND report_type = ? AND day >= ? GROUP BY day')
+    .all(siteId, reportType, days[0]) as { day: string; n: number }[];
+  for (const r of rows) {
+    const i = days.indexOf(r.day);
+    if (i >= 0) values[i] = r.n;
+  }
+  return { days, values };
+}
+
+export type TileState = 'inactive' | 'new' | 'active' | 'none';
+export type TypeTile = { def: TypePageDef; count: number; newRows: number; state: TileState };
+
+/**
+ * One tile per report type for the site summary: 7-day count and a state.
+ * Types without a setup feature only need Reporting-Endpoints, which is always emitted, so they count as enabled.
+ */
+export function typeTiles(db: Db, site: Site, now: number): TypeTile[] {
+  return TYPE_PAGES.map((def) => {
+    const s = typeStats(db, site.id, def.type, now);
+    const enabled = def.setupFeature === null || site.enabledHeaders.includes(def.setupFeature);
+    // CSP: the same count as the site page's "Da rivedere" (inline/eval rows stay in the dashboard, never to review)
+    const newRows = def.type === 'csp-violation' ? reviewCount(db, site.id) : s.newRows;
+    const state: TileState = !enabled && s.reports7 === 0 ? 'inactive' : newRows > 0 ? 'new' : s.reports7 > 0 ? 'active' : 'none';
+    return { def, count: s.reports7, newRows, state };
+  });
 }

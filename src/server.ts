@@ -2,13 +2,13 @@ import { serve } from '@hono/node-server';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { EmailChannel } from './alerts/channels.js';
-import { enqueueAlert } from './alerts/queue.js';
+import { enqueue } from './alerts/queue.js';
 import { backupDb, pruneData } from './jobs/maintenance.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { loadConfig } from './config.js';
 import { openDb } from './db/db.js';
 import { KnownCache, RateLimiter } from './ingest/limits.js';
-import { createApp } from './web/app.js';
+import { createApp, type Deps } from './web/app.js';
 
 const config = loadConfig(process.env);
 mkdirSync(config.dataDir, { recursive: true });
@@ -17,10 +17,10 @@ const db = openDb(join(config.dataDir, 'csp-monitor.sqlite'));
 const known = new KnownCache();
 known.load(db);
 
-const deps = {
+const deps: Deps = {
   db, config, now: () => Date.now(), channels: [EmailChannel.fromConfig(db, config)],
   limiter: new RateLimiter(), known,
-  onAlert: (s: number, o: number, n: number) => enqueueAlert(db, s, o, n),
+  onAlert: (s, req, n) => enqueue(db, s, req, n),
 };
 const app = createApp(deps);
 const runMaintenance = async (_d: unknown, now: number): Promise<void> => {

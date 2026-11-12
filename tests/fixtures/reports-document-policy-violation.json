@@ -1,0 +1,16 @@
+[
+  {
+    "type": "document-policy-violation",
+    "url": "https://www.gida-spa.it/prodotti?x=1",
+    "age": 5,
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "body": {
+      "featureId": "document-write",
+      "disposition": "report",
+      "message": "Document policy violation: document.write is not allowed.",
+      "sourceFile": "https://www.gida-spa.it/js/app.js",
+      "lineNumber": 7,
+      "columnNumber": 2
+    }
+  }
+]

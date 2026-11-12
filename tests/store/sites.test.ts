@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { openDb } from '../../src/db/db.js';
-import { createSite, getSite, getSiteByKey, listSites, updateSite, endLearning, touchSite } from '../../src/store/sites.js';
+import { createSite, getSite, getSiteByKey, listSites, updateSite, endLearning, touchSite, setEnabledHeaders } from '../../src/store/sites.js';
 import { getSetting, setSetting } from '../../src/store/settings.js';
 import { NOW } from '../helpers.js';
 
@@ -53,5 +53,28 @@ describe('settings', () => {
     setSetting(db, 'alert_email', 'a@x.it');
     setSetting(db, 'alert_email', 'b@x.it');
     expect(getSetting(db, 'alert_email')).toBe('b@x.it');
+  });
+});
+
+describe('enabledHeaders', () => {
+  it('defaults to csp', () => {
+    const db = openDb(':memory:');
+    expect(createSite(db, { name: 'a', domains: ['a.it'] }, NOW).enabledHeaders).toEqual(['csp']);
+  });
+  it('setEnabledHeaders dedupes, drops invalid values and always keeps csp', () => {
+    const db = openDb(':memory:');
+    const s = createSite(db, { name: 'a', domains: ['a.it'] }, NOW);
+    setEnabledHeaders(db, s.id, ['nel', 'nel', 'coop', 'bogus' as never]);
+    expect(getSite(db, s.id)!.enabledHeaders).toEqual(['csp', 'nel', 'coop']);
+    setEnabledHeaders(db, s.id, []);
+    expect(getSite(db, s.id)!.enabledHeaders).toEqual(['csp']);
+  });
+  it('parses tolerantly', () => {
+    const db = openDb(':memory:');
+    const s = createSite(db, { name: 'a', domains: ['a.it'] }, NOW);
+    db.prepare('UPDATE sites SET enabled_headers = ? WHERE id = ?').run('["coop","zzz",3]', s.id);
+    expect(getSite(db, s.id)!.enabledHeaders).toEqual(['coop']);
+    db.prepare('UPDATE sites SET enabled_headers = ? WHERE id = ?').run('not json', s.id);
+    expect(getSite(db, s.id)!.enabledHeaders).toEqual(['csp']);
   });
 });

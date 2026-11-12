@@ -1,0 +1,16 @@
+[
+  {
+    "type": "permissions-policy-violation",
+    "url": "https://www.gida-spa.it/contatti",
+    "age": 5,
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "body": {
+      "featureId": "camera",
+      "disposition": "enforce",
+      "message": "Permissions policy violation: camera is not allowed in this document.",
+      "sourceFile": "https://widgets.example.net/w.js",
+      "lineNumber": 10,
+      "columnNumber": 4
+    }
+  }
+]

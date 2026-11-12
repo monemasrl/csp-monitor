@@ -14,6 +14,7 @@ import type { AlertChannel } from '../alerts/channels.js';
 import type { Config } from '../config.js';
 import type { Db } from '../db/db.js';
 import { errId, ingest } from '../ingest/handler.js';
+import type { AlertRequest } from '../ingest/handlers/types.js';
 import type { KnownCache, RateLimiter } from '../ingest/limits.js';
 import { recordDiscarded } from '../store/discarded.js';
 import { recordNoise } from '../store/origins.js';
@@ -26,7 +27,7 @@ export type Deps = {
   channels: AlertChannel[];
   limiter: RateLimiter;
   known: KnownCache;
-  onAlert: (siteId: number, originId: number, now: number) => void;
+  onAlert: (siteId: number, req: AlertRequest, now: number) => void;
 };
 
 const MAX_BODY = 65_536;

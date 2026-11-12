@@ -2,10 +2,12 @@ import { createHash } from 'node:crypto';
 import type { Child } from 'hono/jsx';
 import { STYLE_HREF } from '../assets.js';
 import type { NavData } from '../queries.js';
+import { FAMILIES, TYPE_PAGES, typePageHref } from '../typePages.js';
 
 export type Active =
   | { page: 'overview' | 'lists' | 'alerts' | 'new-site' }
-  | { page: 'site' | 'csp' | 'settings'; siteId: number };
+  | { page: 'site' | 'csp' | 'settings'; siteId: number }
+  | { page: 'type'; siteId: number; slug: string };
 
 /**
  * The dashboard's only JavaScript: copy buttons. A static string with no data in it,
@@ -53,7 +55,15 @@ function Nav(props: { nav: NavData; active: Active }) {
         <>
           <h4 title={current.name}>{current.name}</h4>
           <a href={`/sites/${current.id}`} class={on(active.page === 'site')}>Riepilogo</a>
-          <a href={`/sites/${current.id}/csp`} class={on(active.page === 'csp')}>Violazioni CSP</a>
+          {FAMILIES.map(f => (
+            <>
+              <h4>{f.label}</h4>
+              {TYPE_PAGES.filter(d => d.family === f.key).map(d => (
+                <a href={typePageHref(current.id, d)}
+                  class={on(d.slug === 'csp-violation' ? active.page === 'csp' : active.page === 'type' && active.slug === d.slug)}>{d.menu}</a>
+              ))}
+            </>
+          ))}
           <a href={`/sites/${current.id}/settings`} class={on(active.page === 'settings')}>Impostazioni</a>
         </>
       ) : null}

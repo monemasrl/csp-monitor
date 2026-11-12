@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { escapeHtml } from '../../src/alerts/render.js';
 import { strictHeaders } from '../../src/headers.js';
-import { addApprovalPattern, recordCspEvent, recordNoise } from '../../src/store/origins.js';
+import { addApprovalPattern, approveOrigin, recordCspEvent, recordGeneric, recordNoise } from '../../src/store/origins.js';
 import { createSite, endLearning, getSite, touchSite } from '../../src/store/sites.js';
+import { cspViolations } from '../../src/web/queries.js';
 import { NOW } from '../helpers.js';
 import { DAY, dash, ev } from './dash.js';
 
@@ -70,6 +71,24 @@ describe('dashboard pages', () => {
     expect(html).toMatch(/Report ultime 24h<\/p><p class="big[^"]*">3</);
     expect(html).toContain('https://a.example');
     expect(html).toContain(`/sites/${site.id}/origins/`);
+  });
+
+  it('a non-CSP row in origins never shows in the CSP views or cascades', async () => {
+    const { db, site, get } = seeded();
+    recordCspEvent(db, site, ev({ origin: 'https://a.example' }), NOW - 1000);
+    recordGeneric(db, site, 'network-error', 'dns.name_not_resolved', 'https://other.example', 'external', '/p',
+      { sourceFile: '', sample: '', line: null, ua: 'Chrome 131', disposition: '', body: '{}' }, NOW - 1000, { x: 1 });
+    expect(db.prepare('SELECT detail FROM origins WHERE report_type = ?').get('network-error')).toEqual({ detail: '{"x":1}' });
+    const csp = await (await get(`/sites/${site.id}/csp`)).text();
+    expect(csp).toContain('https://a.example');
+    expect(csp).not.toContain('https://other.example');
+    expect(csp).not.toContain('dns.name_not_resolved');
+    const overview = await (await get('/')).text();
+    expect(overview).not.toContain('https://other.example');
+    expect(overview).toMatch(/Da rivedere<\/p><p class="big[^"]*">1</);
+    approveOrigin(db, site.id, 'https://other.example', 'site', NOW);
+    expect(db.prepare('SELECT COUNT(*) n FROM approvals').get()).toEqual({ n: 0 });
+    expect(db.prepare("SELECT status FROM origins WHERE report_type = 'network-error'").get()).toEqual({ status: 'new' });
   });
 
   it('creating a site shows the strict header with its key', async () => {
@@ -166,5 +185,19 @@ describe('dashboard pages', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/css');
     expect(await res.text()).toContain('font-family');
+  });
+});
+
+describe('CSP page counts only csp-violation', () => {
+  it('a report of another type does not change the 30-day count, chart or browser share', () => {
+    const { db, site } = seeded();
+    recordCspEvent(db, site, ev({ ua: 'Chrome 131' }), NOW - 1000);
+    const before = cspViolations(db, site, NOW, {});
+    recordGeneric(db, site, 'coop', 'navigation-to-document', 'https://x.example', 'external', '/p',
+      { sourceFile: '', sample: '', line: null, ua: 'Firefox 140', disposition: 'report', body: '{}' }, NOW - 500);
+    const after = cspViolations(db, site, NOW, {});
+    expect(after.totals.reports30).toBe(1);
+    expect(after.series).toEqual(before.series);
+    expect(after.browsers).toEqual([{ name: 'Chrome', pct: 100 }]);
   });
 });

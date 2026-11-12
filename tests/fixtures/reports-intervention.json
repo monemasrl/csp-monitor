@@ -1,0 +1,15 @@
+[
+  {
+    "type": "intervention",
+    "url": "https://www.gida-spa.it/news",
+    "age": 5,
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "body": {
+      "id": "NoPassiveScrollBlocking",
+      "message": "Handling of wheel event was delayed.",
+      "sourceFile": "https://www.gida-spa.it/js/slider.js?v=2",
+      "lineNumber": 120,
+      "columnNumber": 9
+    }
+  }
+]

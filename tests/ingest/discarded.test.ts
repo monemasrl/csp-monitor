@@ -39,10 +39,10 @@ describe('discarded reports', () => {
   });
 
   it('records report types that are not handled yet, with their type', () => {
-    const coep = JSON.stringify([{ type: 'coep', url: 'https://www.example.it/', body: { type: 'corp', blockedURL: 'https://x.it/a.png' } }]);
+    const coep = JSON.stringify([{ type: 'nel', url: 'https://www.example.it/', body: { type: 'http.error', phase: 'application' } }]);
     ingest(deps, site.key, 'application/reports+json', coep, T, CHROME);
     const [d] = listDiscarded(deps.db, site.id);
-    expect(d).toMatchObject({ reason: 'unsupported-type', detail: 'coep' });
+    expect(d).toMatchObject({ reason: 'unsupported-type', detail: 'nel' });
     // not counted as noise
     expect(deps.db.prepare('SELECT COUNT(*) n FROM noise_counts').get()).toEqual({ n: 0 });
   });
@@ -82,7 +82,7 @@ describe('site page', () => {
     const d = dash();
     const s = createSite(d.db, { name: 'P', domains: ['www.example.it'] }, T - 30 * 86_400_000);
     expect(await (await d.get(`/sites/${s.id}`)).text()).toContain('Nessun report scartato di recente.');
-    recordDiscarded(d.db, s.id, T, 'unsupported-type', { body: '{"type":"coep","x":"<b>"}', detail: 'coep', contentType: 'application/reports+json', ua: 'Safari 27' });
+    recordDiscarded(d.db, s.id, T, 'unsupported-type', { body: '{"type":"coep","x":"<b>"}', detail: 'nel', contentType: 'application/reports+json', ua: 'Safari 27' });
     const html = await (await d.get(`/sites/${s.id}`)).text();
     expect(html).toContain('Ultimi report scartati');
     expect(html).toContain('Tipo non gestito');
@@ -94,7 +94,7 @@ describe('site page', () => {
 
 describe('privacy', () => {
   it('does not keep the full user agent of parsed reports', () => {
-    const r = JSON.stringify([{ type: 'deprecation', url: 'https://www.example.it/', user_agent: CHROME, body: { id: 'x' } }]);
+    const r = JSON.stringify([{ type: 'unknown-x', url: 'https://www.example.it/', user_agent: CHROME, body: { id: 'x' } }]);
     ingest(deps, site.key, 'application/reports+json', r, T, CHROME);
     const [d] = listDiscarded(deps.db, site.id);
     expect(d!.body).not.toContain('Mozilla');

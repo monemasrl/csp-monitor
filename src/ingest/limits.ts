@@ -39,28 +39,29 @@ export class RateLimiter {
   }
 }
 
-/** Set of (site, directive, origin) already present in `origins`; lets the flood path tell new origins from known ones. */
+/** Set of (site, type, keyA, keyB) already present in `origins`; lets the flood path tell new origins from known ones. */
 export class KnownCache {
   private readonly set = new Set<string>();
 
-  private static k(siteId: number, directive: string, origin: string): string {
-    return JSON.stringify([siteId, directive, origin]);
+  /** siteId stays first: forgetSite matches on the `[siteId,` prefix. */
+  private static k(siteId: number, type: string, keyA: string, keyB: string): string {
+    return JSON.stringify([siteId, type, keyA, keyB]);
   }
 
   load(db: Db): void {
     this.set.clear();
     const rows = db
-      .prepare("SELECT site_id, directive, origin FROM origins WHERE report_type = 'csp-violation'")
-      .all() as { site_id: number; directive: string; origin: string }[];
-    for (const r of rows) this.add(r.site_id, r.directive, r.origin);
+      .prepare('SELECT site_id, report_type, directive, origin FROM origins')
+      .all() as { site_id: number; report_type: string; directive: string; origin: string }[];
+    for (const r of rows) this.add(r.site_id, r.report_type, r.directive, r.origin);
   }
 
-  has(siteId: number, directive: string, origin: string): boolean {
-    return this.set.has(KnownCache.k(siteId, directive, origin));
+  has(siteId: number, type: string, keyA: string, keyB: string): boolean {
+    return this.set.has(KnownCache.k(siteId, type, keyA, keyB));
   }
 
-  add(siteId: number, directive: string, origin: string): void {
-    this.set.add(KnownCache.k(siteId, directive, origin));
+  add(siteId: number, type: string, keyA: string, keyB: string): void {
+    this.set.add(KnownCache.k(siteId, type, keyA, keyB));
   }
 
   /** Drops every entry of a site (after its data is cleared or the site is removed). */

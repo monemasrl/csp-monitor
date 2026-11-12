@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AlertChannel } from '../../src/alerts/channels.js';
 import { approveOrigin } from '../../src/store/origins.js';
-import { dueBatches, enqueueAlert, markSent, runDueAlerts, runLearningSummaries } from '../../src/alerts/queue.js';
-import { recordCspEvent } from '../../src/store/origins.js';
+import { dueBatches, enqueue, enqueueAlert, markSent, runDueAlerts, runLearningSummaries } from '../../src/alerts/queue.js';
+import { recordCspEvent, recordGeneric } from '../../src/store/origins.js';
 import { createSite, endLearning, getSite } from '../../src/store/sites.js';
 import type { CspEvent } from '../../src/ingest/csp.js';
 import { NOW as T, testDeps } from '../helpers.js';
@@ -126,6 +126,21 @@ describe('learning summary', () => {
     expect(withOrigin[0]!.subject).not.toContain('apprendimento');
   });
 
+  it('lists only csp-violation rows (csp-hash / coop rows stay out)', async () => {
+    const { deps, db, s1, o } = setup();
+    const at = T - 15 * 86400_000;
+    o(s1, 'https://c1.example', at);
+    const smp = { sourceFile: '', sample: '', line: null, ua: '', disposition: 'report', body: '{}' };
+    recordGeneric(db, s1, 'csp-hash', 'script', 'https://hash.example/app.js', 'external', '/p', smp, at);
+    recordGeneric(db, s1, 'coop', 'navigation-to-document', 'https://coop.example', 'external', '/p', smp, at);
+    const ch = fake();
+    await runLearningSummaries(withChannels(deps, [ch]), T);
+    const m1 = ch.sent.find(m => m.subject.includes('S1'))!;
+    expect(m1.subject).toBe('[CSP Monitor] S1: fine apprendimento, 1 origini da rivedere');
+    expect(m1.text).not.toContain('hash.example');
+    expect(m1.text).not.toContain('coop.example');
+  });
+
   it('retries when sending fails and skips sites still learning', async () => {
     const deps = testDeps(); const db = deps.db;
     const s = createSite(db, { name: 'S', domains: ['a.example.it'] }, T - 20 * 86400_000);
@@ -139,6 +154,71 @@ describe('learning summary', () => {
     expect(getSite(db, s.id)!.learningSummarySent).toBe(true);
     expect(err).toHaveBeenCalled();
     err.mockRestore();
+  });
+
+  it('an immediate alert is due at once, together with the other pendings of the site', () => {
+    const { db, s1, s2, o } = setup();
+    const o1 = o(s1, 'https://c1.example'), o2 = o(s1, 'https://c2.example'), o3 = o(s2, 'https://c3.example');
+    enqueueAlert(db, s1.id, o1, T);
+    enqueue(db, s1.id, { kind: 'integrity', originId: o2, immediate: true }, T + 1000);
+    enqueueAlert(db, s2.id, o3, T + 1000);
+    const b = dueBatches(db, T + 2000);
+    expect(b).toHaveLength(1);
+    expect(b[0]!.site.id).toBe(s1.id);
+    expect(b[0]!.items.map(i => i.kind)).toEqual(['new-origin', 'integrity']);
+    expect(b[0]!.pendingIds).toHaveLength(2);
+  });
+
+  it('immediate makes a site due at most once per grouping window', async () => {
+    const { deps, db, s1, o } = setup();
+    const ch = fake();
+    const d = withChannels(deps, [ch]);
+    enqueue(db, s1.id, { kind: 'tls-error', originId: o(s1, 'https://c1.example'), immediate: true }, T);
+    await runDueAlerts(d, T);
+    expect(ch.sent).toHaveLength(1);
+    enqueue(db, s1.id, { kind: 'tls-error', originId: o(s1, 'https://c2.example'), immediate: true }, T + 60_000);
+    await runDueAlerts(d, T + 60_000);
+    await runDueAlerts(d, T + 599_999);
+    expect(ch.sent).toHaveLength(1);
+    await runDueAlerts(d, T + 600_000);
+    expect(ch.sent).toHaveLength(2);
+    expect(ch.sent[1]!.text).toContain('c2.example');
+  });
+
+  it('items carry the report type of their row', () => {
+    const { db, s1, o } = setup();
+    const smp = { sourceFile: '', sample: '', line: null, ua: '', disposition: 'report', body: '{}' };
+    const h = recordGeneric(db, s1, 'csp-hash', 'script', 'https://a.example.it/app.js', 'external', '/p', smp, T).originId;
+    enqueueAlert(db, s1.id, o(s1, 'https://c1.example'), T);
+    enqueue(db, s1.id, { kind: 'hash-changed', originId: h }, T);
+    const [b] = dueBatches(db, T + 600_000);
+    expect(b!.items.map(i => i.reportType)).toEqual(['csp-violation', 'csp-hash']);
+  });
+
+  it('keeps payloads, dedups per (kind, origin) and keeps integrity when approved', () => {
+    const { db, s1, o } = setup();
+    const o1 = o(s1, 'https://c1.example');
+    enqueueAlert(db, s1.id, o1, T);
+    enqueue(db, s1.id, { kind: 'hash-changed', originId: o1 }, T);
+    enqueue(db, s1.id, { kind: 'hash-changed', originId: o1 }, T);
+    enqueue(db, s1.id, { kind: 'integrity', originId: o1 }, T);
+    enqueue(db, s1.id, { kind: 'nel-rate', payload: { host: 'h' } }, T);
+    approveOrigin(db, s1.id, 'https://c1.example', 'site', T);
+    const [b] = dueBatches(db, T + 600_000);
+    expect(b!.items.map(i => i.kind)).toEqual(['integrity', 'nel-rate']);
+    expect(b!.items[1]!.payload).toEqual({ host: 'h' });
+    expect(b!.pendingIds).toHaveLength(5);
+  });
+
+  it('delivers a mixed batch in one message', async () => {
+    const { deps, db, s1, o } = setup();
+    const ch = fake();
+    enqueueAlert(db, s1.id, o(s1, 'https://c1.example'), T);
+    enqueue(db, s1.id, { kind: 'nel-rate', payload: { host: 'h' }, immediate: true }, T);
+    await runDueAlerts(withChannels(deps, [ch]), T + 1);
+    expect(ch.sent).toHaveLength(1);
+    expect(ch.sent[0]!.subject).toBe('[CSP Monitor] S1: 2 segnalazioni');
+    expect(dueBatches(db, T + 2)).toHaveLength(0);
   });
 });
 export { BASE };

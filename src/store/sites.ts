@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { Db } from '../db/db.js';
+import { HEADER_FEATURES, type HeaderFeature } from '../headers.js';
 
 export type Site = {
   id: number;
@@ -12,16 +13,43 @@ export type Site = {
   ratePerMin: number;
   ratePerDay: number;
   lastReportAt: number | null;
+  /** Path prefixes (e.g. /checkout) whose alerts are not delayed. */
+  sensitivePaths: string[];
+  /**
+   * Optional report types the owner enabled. 'csp' is guaranteed only once setEnabledHeaders has written the list:
+   * a stored value read back as-is may lack it (e.g. a JSON array with no known feature parses to []).
+   */
+  enabledHeaders: HeaderFeature[];
 };
 
 type Row = {
   id: number; name: string; key: string; domains: string; created_at: number; learning_until: number;
   learning_summary_sent: number; rate_per_min: number; rate_per_day: number; last_report_at: number | null;
+  sensitive_paths: string; enabled_headers: string;
 };
 
 const LEARNING_MS = 7 * 24 * 3600 * 1000;
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const KEY_LENGTH = 16;
+
+function parseList(text: string): string[] {
+  try {
+    const v: unknown = JSON.parse(text);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseFeatures(text: string): HeaderFeature[] {
+  try {
+    const v: unknown = JSON.parse(text);
+    if (!Array.isArray(v)) return ['csp'];
+    return v.filter((x): x is HeaderFeature => (HEADER_FEATURES as readonly unknown[]).includes(x));
+  } catch {
+    return ['csp'];
+  }
+}
 
 function toSite(r: Row): Site {
   return {
@@ -29,6 +57,8 @@ function toSite(r: Row): Site {
     createdAt: r.created_at, learningUntil: r.learning_until,
     learningSummarySent: r.learning_summary_sent !== 0,
     ratePerMin: r.rate_per_min, ratePerDay: r.rate_per_day, lastReportAt: r.last_report_at,
+    sensitivePaths: parseList(r.sensitive_paths),
+    enabledHeaders: parseFeatures(r.enabled_headers),
   };
 }
 
@@ -98,7 +128,7 @@ export function startLearning(db: Db, id: number, now: number, days: number): vo
 }
 
 /** Report-derived tables keyed by site (approvals are configuration and are kept by clearSiteData). */
-const SITE_DATA_TABLES = ['samples', 'pending_alerts', 'daily_counts', 'noise_counts', 'discarded', 'origins'] as const;
+const SITE_DATA_TABLES = ['samples', 'pending_alerts', 'daily_counts', 'noise_counts', 'discarded', 'window_counts', 'reminders', 'origins'] as const;
 
 /** Deletes every report-derived row of a site; the site, its key, settings and approvals stay. */
 export function clearSiteData(db: Db, id: number): void {
@@ -119,4 +149,16 @@ export function deleteSite(db: Db, id: number): void {
 
 export function touchSite(db: Db, id: number, now: number): void {
   db.prepare('UPDATE sites SET last_report_at = ? WHERE id = ?').run(now, id);
+}
+
+/** Stores the enabled header features (deduplicated, valid only, 'csp' always first). */
+export function setEnabledHeaders(db: Db, siteId: number, features: HeaderFeature[]): void {
+  const valid = new Set<HeaderFeature>(['csp']);
+  for (const f of features) if ((HEADER_FEATURES as readonly unknown[]).includes(f)) valid.add(f);
+  db.prepare('UPDATE sites SET enabled_headers = ? WHERE id = ?').run(JSON.stringify([...valid]), siteId);
+}
+
+/** Replaces the sensitive path prefixes (callers validate and deduplicate). */
+export function setSensitivePaths(db: Db, siteId: number, paths: string[]): void {
+  db.prepare('UPDATE sites SET sensitive_paths = ? WHERE id = ?').run(JSON.stringify(paths), siteId);
 }

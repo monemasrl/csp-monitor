@@ -43,4 +43,13 @@ describe('scheduler', () => {
     expect(runDue).toHaveBeenCalledTimes(2);
     stop();
   });
+
+  it('runs the reminders job every tick and survives its failure', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const runReminders = vi.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValue(undefined);
+    const stop = startScheduler(testDeps(), { runDue: async () => {}, runLearning: async () => {}, runMaintenance: async () => {}, runReminders });
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(runReminders).toHaveBeenCalledTimes(2);
+    stop();
+  });
 });
