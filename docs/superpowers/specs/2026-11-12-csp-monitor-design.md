@@ -24,7 +24,7 @@ L'obiettivo è la **sorveglianza di sicurezza**, non portare i siti a una CSP bl
 
 - Account per i clienti, multiutente, billing: lo usa solo Andrea.
 - Rendere bloccanti le policy o gestire il deploy degli header sui siti: l'header lo aggiunge Andrea a mano.
-- Inventario script con hash per PCI DSS, monitoraggio dei cambiamenti del contenuto degli script.
+- Esportazioni e prove formali per PCI DSS (l'inventario degli hash degli script invece è incluso, vedi tipo `csp-hash`).
 - Generatore automatico di policy.
 
 ## Anti-obiettivi (sarebbe un fallimento anche se funziona)
@@ -67,7 +67,7 @@ Una policy volutamente stretta: tutto ciò che è esterno viene segnalato, e cos
 
 L'endpoint accetta:
 - `application/csp-report` (vecchio formato `report-uri`, un report per richiesta);
-- `application/reports+json` (Reporting API, array di report; si tengono solo quelli `type: "csp-violation"`).
+- `application/reports+json` (Reporting API, array di report) per tutti i 12 tipi elencati in "Tipi di report"; i tipi sconosciuti vengono contati e scartati.
 
 Regole:
 - Risponde sempre subito `204`, senza dettagli. CORS aperto per `POST`.
@@ -171,15 +171,31 @@ Ispirata al "Security headers checker" e al "CSP scanner" di CentralCSP. Usa gli
 
 Mockup interattivo della dashboard (privato): https://claude.ai/artifact/6Fh6uA4XHSymiLm7rvLdhp — panoramica, riepilogo sito, dettaglio origine, verifica configurazione, header di sicurezza (con la vista CSP in dettaglio) e una pagina per ciascuno dei 12 tipi di report. È il riferimento per l'interfaccia; i dati mostrati sono inventati.
 
-## Decisione aperta: tipi di report nella prima versione
+## Tipi di report *(tutti e 12 nella prima versione: deciso da Andrea)*
 
-Il mockup mostra 12 tipi di report raggruppati in tre famiglie. Andrea deve ancora decidere quali entrano nella prima versione; finché non decide, la prima versione copre solo `csp-violation` (il resto del documento è scritto su quello).
+Le sezioni 2–5 descrivono `csp-violation` in dettaglio. Gli altri 11 tipi passano dallo stesso endpoint (`application/reports+json`; NEL arriva anche via `Report-To`), dallo stesso filtro del rumore dove applicabile (pagina fuori dominio, bot) e dallo stesso raggruppamento delle email. Per ciascuno cambiano la **chiave di aggregazione** (cosa conta come "la stessa cosa") e la **regola di alert**. Valori e regole sono scelte di Claude, riprese dai mockup:
 
-- **Segnali di attacco:** `csp-violation`, `csp-hash` (inventario hash degli script: oggi è tra i non obiettivi), `integrity-violation`, `connection-allowlist` (proposta sperimentale).
-- **Guasti che il server non vede:** `network-error` (NEL, richiede anche `Report-To`), `crash`, `deprecation`, `intervention`.
-- **Igiene delle policy:** `permissions-policy-violation`, `document-policy-violation`, `coop`, `coep`.
+| Tipo | Chiave di aggregazione | Alert |
+|---|---|---|
+| `csp-violation` | sito + direttiva + origine | prima combinazione non approvata (sezione 5) |
+| `csp-hash` | sito + URL script (o "inline" + pagina) → hash | hash cambiato per uno script noto, o script mai visto. Si può segnare uno script come "varia spesso" (niente alert) e segnare un rilascio (cambi di hash attesi per 1 ora) |
+| `integrity-violation` | sito + URL risorsa | sempre, al primo report per risorsa |
+| `connection-allowlist` | sito + destinazione | prima destinazione non approvata; senza attesa di raggruppamento se la pagina è segnata come "sensibile" (login, pagamento) |
+| `network-error` | sito + tipo errore + host | tasso di errori > 0,5% delle richieste campionate per 15 minuti, oppure primo errore di certificato TLS |
+| `crash` | sito + motivo + pagina | crash di una pagina raddoppiati rispetto alla settimana prima |
+| `deprecation` | sito + id API | una volta alla prima API con data di rimozione; promemoria 30 giorni prima della data |
+| `intervention` | sito + id intervento | nessuno (solo dashboard) |
+| `permissions-policy-violation` | sito + funzione + origine dello script | prima richiesta di camera, microfono, posizione o pagamento da uno script non approvato |
+| `document-policy-violation` | sito + regola | nessuno (solo dashboard) |
+| `coop` | sito + tipo + altra finestra | solo con policy bloccante: prima interazione bloccata mai vista |
+| `coep` | sito + URL risorsa | solo con policy bloccante: prima risorsa bloccata mai vista |
 
-Quasi tutti, tranne `csp-violation` e in parte `coop`/`coep`, arrivano oggi solo da browser Chromium. L'endpoint di ingestione accetta comunque qualsiasi tipo nel formato `application/reports+json`, così aggiungerli dopo riguarda solo normalizzazione, regole di alert e pagine.
+Altre regole comuni:
+- Il periodo di apprendimento (sezione 5) vale per tutti i tipi.
+- Le soglie basate sul tasso (`network-error`, `crash`) usano i contatori giornalieri/orari già previsti; per `network-error` il "campione" sono anche i report di successo (`success_fraction` nell'header NEL suggerito).
+- L'header suggerito per sito (sezione 6) diventa un insieme di header: `Reporting-Endpoints` con `csp` e `default`, `Report-To` + `NEL`, e le varianti Report-Only di Permissions-Policy, COOP, COEP, Document-Policy, Integrity-Policy e Connection-Allowlist. Andrea sceglie per sito quali attivare; la dashboard indica per ogni tipo se l'header è attivo (dato dalla verifica, sezione 7).
+- Quasi tutti i tipi, tranne `csp-violation` e in parte `coop`/`coep`, arrivano oggi solo da browser Chromium; `connection-allowlist` e `document-policy` sono sperimentali e il loro formato può cambiare: il parser deve tollerare campi mancanti o sconosciuti e conservare il corpo grezzo nel campione.
+- Il riepilogo sito mostra un riquadro per tipo (conteggio 7 giorni e stato), come nel mockup.
 
 ## Lasciato a chi costruisce
 
