@@ -98,4 +98,22 @@ describe('auth', () => {
     expect(res.headers.get('location')).toBe('/login');
     expect(cookieOf(res)).toContain('Max-Age=0');
   });
+  it('parallel attempts cannot bypass the limiter', async () => {
+    const app = setup();
+    const reqs = [...Array(19)].map(() => app.request('/login', form('no')));
+    reqs.push(app.request('/login', form('segreta')));
+    const statuses = (await Promise.all(reqs)).map((r) => r.status);
+    expect(statuses).toContain(429);
+    expect(statuses).not.toContain(303);
+  });
+  it('rejects oversized dashboard POST bodies with 413', async () => {
+    const big = { ...form('x'), body: 'password=' + 'a'.repeat(20_000) };
+    expect((await setup().request('/login', big)).status).toBe(413);
+  });
+  it('treats an over-long password as wrong and counts it as a failure', async () => {
+    const app = setup();
+    const long = form('a'.repeat(2000));
+    for (let i = 0; i < 5; i++) expect((await app.request('/login', long)).status).toBe(401);
+    expect((await app.request('/login', form('segreta'))).status).toBe(429);
+  });
 });

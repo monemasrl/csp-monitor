@@ -41,4 +41,14 @@ describe('LoginLimiter', () => {
     l.reset('a');
     expect(l.blocked('a', 1)).toBe(false);
   });
+  it('drops expired entries and caps total size', () => {
+    const l = new LoginLimiter();
+    for (let i = 0; i < 50; i++) l.fail(`ip${i}`, 0);
+    for (let i = 0; i < 5; i++) l.fail('blk', 0);
+    expect(l.size).toBe(51);
+    l.fail('new', 16 * MIN);
+    expect(l.size).toBe(1);
+    for (let i = 0; i < 25_000; i++) l.fail(`x${i}`, 16 * MIN);
+    expect(l.size).toBeLessThanOrEqual(10_000);
+  });
 });

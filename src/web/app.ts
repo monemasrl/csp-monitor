@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { getConnInfo } from '@hono/node-server/conninfo';
+import { bodyLimit } from 'hono/body-limit';
 import { getCookie, setCookie } from 'hono/cookie';
 import { LoginLimiter } from '../auth/limiter.js';
 import { verifyPassword } from '../auth/password.js';
@@ -24,6 +25,7 @@ export type Deps = {
 };
 
 const MAX_BODY = 65_536;
+const MAX_PASSWORD_LENGTH = 1024;
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -78,6 +80,8 @@ export function createApp(deps: Deps): Hono {
     }
   };
 
+  const dashboardBodyLimit = bodyLimit({ maxSize: 16 * 1024 });
+
   // Dashboard-only middleware: /health and /r/* bypass everything.
   app.use('*', async (c, next) => {
     const path = c.req.path;
@@ -88,7 +92,7 @@ export function createApp(deps: Deps): Hono {
       const token = getCookie(c, SESSION_COOKIE);
       if (!token || !verifySession(deps.config.sessionSecret, token, deps.now())) return c.redirect('/login', 303);
     }
-    return next();
+    return c.req.method === 'POST' ? dashboardBodyLimit(c, next) : next();
   });
 
   app.get('/login', (c) => c.html(Login({})));
@@ -100,7 +104,12 @@ export function createApp(deps: Deps): Hono {
     }
     const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
     const pw = typeof body.password === 'string' ? body.password : '';
-    if (!verifyPassword(pw, deps.config.adminPasswordHash)) {
+    // Re-check after the await: check -> verify -> fail must run with no await in between,
+    // otherwise parallel requests all pass the first check.
+    if (limiter.blocked(ip, now)) {
+      return c.html(Login({ error: 'Troppi tentativi, riprova tra qualche minuto' }), 429);
+    }
+    if (pw.length > MAX_PASSWORD_LENGTH || !verifyPassword(pw, deps.config.adminPasswordHash)) {
       limiter.fail(ip, now);
       return c.html(Login({ error: 'Password non corretta' }), 401);
     }
