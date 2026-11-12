@@ -1,4 +1,5 @@
 // Form validation for the dashboard. Error messages are shown to the user (Italian).
+import { HEADER_FEATURES, type HeaderFeature } from '../headers.js';
 import { normalizeOrigin } from '../match.js';
 
 /** CSP fetch directives an approval can be created for by hand. */
@@ -88,8 +89,33 @@ export function parseEmail(v: string): string | null {
   return e.length <= 254 && /^[^\s@<>"',;]+@[^\s@<>"',;]+\.[^\s@<>"',;]+$/.test(e) ? e : null;
 }
 
-export type SiteInput = { name: string; domains: string[]; ratePerMin?: number; ratePerDay?: number };
-export type SiteForm = { name: string; domains: string; rate_per_min?: string; rate_per_day?: string };
+const MAX_PATH = 200;
+const MAX_PATHS = 50;
+
+/** One path prefix per line: must start with '/', blank lines ignored, duplicates dropped. */
+export function parsePaths(text: string): Result<string[]> {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length > MAX_PATHS) return { ok: false, errors: [`Al massimo ${MAX_PATHS} pagine sensibili.`] };
+  const bad = lines.filter(l => !l.startsWith('/') || l.length > MAX_PATH || /[\s\p{C}]/u.test(l));
+  if (bad.length > 0) {
+    return { ok: false, errors: [`Pagina sensibile non valida: ${bad.map(b => b.slice(0, 40)).join(', ')} (deve iniziare con / e avere al massimo ${MAX_PATH} caratteri).`] };
+  }
+  return { ok: true, value: [...new Set(lines)] };
+}
+
+/** Checked header features from the form; unknown values are ignored ('csp' is always on). */
+export function parseFeatures(values: string[]): HeaderFeature[] {
+  const on = new Set(values);
+  return HEADER_FEATURES.filter(f => f === 'csp' || on.has(f));
+}
+
+export type SiteInput = {
+  name: string; domains: string[]; ratePerMin?: number; ratePerDay?: number; sensitivePaths?: string[];
+};
+export type SiteForm = {
+  name: string; domains: string; rate_per_min?: string; rate_per_day?: string;
+  sensitive_paths?: string; features?: string[];
+};
 
 export function parseSiteForm(f: SiteForm, withCaps: boolean): Result<SiteInput> {
   const errors: string[] = [];
@@ -118,6 +144,9 @@ export function parseSiteForm(f: SiteForm, withCaps: boolean): Result<SiteInput>
     if (perDay === null) errors.push('Il tetto al giorno deve essere un numero intero positivo.');
     value.ratePerMin = perMin ?? undefined;
     value.ratePerDay = perDay ?? undefined;
+    const paths = parsePaths(f.sensitive_paths ?? '');
+    if (!paths.ok) errors.push(...paths.errors);
+    else value.sensitivePaths = paths.value;
   }
   return errors.length > 0 ? { ok: false, errors } : { ok: true, value };
 }

@@ -2,22 +2,22 @@
 import type { Context, Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { AlertMessage } from '../alerts/channels.js';
-import { strictHeaders, suggestedHeaders } from '../headers.js';
+import { buildHeaderSet, strictHeaders, suggestedHeaders } from '../headers.js';
 import { startRelease } from '../ingest/handlers/hash.js';
 import {
   addApprovalPattern, approveOrigin, approveTypeRow, markRowSuspect, markSuspect, markVolatile, removeApproval,
 } from '../store/origins.js';
 import { getSetting, setSetting } from '../store/settings.js';
 import {
-  clearSiteData, createSite, deleteSite, endLearning, getSite, startLearning, updateSite, type Site,
+  clearSiteData, createSite, deleteSite, endLearning, getSite, setEnabledHeaders, setSensitivePaths, startLearning, updateSite, type Site,
 } from '../store/sites.js';
 import { MAX_LEARNING_DAYS } from './views/SiteSettings.js';
 import { REVIEWABLE_TYPES, typePageBySlug, typePageData } from './typePages.js';
 import type { Deps } from './app.js';
 import {
-  addNoisePattern, cspViolations, deleteNoisePattern, lists, navData, originDetail, originOfSite, overview, siteSummary,
+  addNoisePattern, cspViolations, deleteNoisePattern, lists, navData, originDetail, originOfSite, overview, siteSummary, typeTiles,
 } from './queries.js';
-import { FETCH_DIRECTIVES, isApprovableSource, parseEmail, parsePattern, parseSiteForm, safeBack, type SiteForm } from './validate.js';
+import { FETCH_DIRECTIVES, isApprovableSource, parseEmail, parsePattern, parseFeatures, parseSiteForm, safeBack, type SiteForm } from './validate.js';
 import { AlertSettings, type TestResult } from './views/AlertSettings.js';
 import { CspViolations } from './views/CspViolations.js';
 import { GlobalLists, type ApprovalForm } from './views/GlobalLists.js';
@@ -88,6 +88,11 @@ export function registerDashboard(app: Hono, deps: Deps): void {
       nav: nav(), data, now,
       strict: strictHeaders(deps.config.baseUrl, site.key),
       suggested: suggestedHeaders(deps.config.baseUrl, site.key, data.approvedSources),
+      tiles: typeTiles(db, site, now),
+      // CSP itself is shown above as suggested/strict; here only the other enabled headers (none when only csp is on).
+      extraHeaders: site.enabledHeaders.every(f => f === 'csp') ? []
+        : buildHeaderSet(deps.config.baseUrl, site.key, site.enabledHeaders, data.approvedSources)
+          .filter(h => !h.name.startsWith('Content-Security-Policy')),
     }));
   });
 
@@ -134,12 +139,15 @@ export function registerDashboard(app: Hono, deps: Deps): void {
     const b = await readForm(c);
     const form: SiteForm = {
       name: one(b, 'name'), domains: one(b, 'domains'), rate_per_min: one(b, 'rate_per_min'), rate_per_day: one(b, 'rate_per_day'),
+      sensitive_paths: one(b, 'sensitive_paths'), features: many(b, 'features'),
     };
     const r = parseSiteForm(form, true);
     if (!r.ok) {
       return render(c, SiteSettings({ nav: nav(), site, endpoint: endpoint(site), now: deps.now(), form, errors: r.errors }), 400);
     }
     updateSite(db, site.id, r.value);
+    setSensitivePaths(db, site.id, r.value.sensitivePaths ?? []);
+    setEnabledHeaders(db, site.id, parseFeatures(form.features ?? []));
     return c.redirect(`/sites/${site.id}`, 303);
   });
 

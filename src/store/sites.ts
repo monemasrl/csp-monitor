@@ -154,3 +154,8 @@ export function setEnabledHeaders(db: Db, siteId: number, features: HeaderFeatur
   for (const f of features) if ((HEADER_FEATURES as readonly unknown[]).includes(f)) valid.add(f);
   db.prepare('UPDATE sites SET enabled_headers = ? WHERE id = ?').run(JSON.stringify([...valid]), siteId);
 }
+
+/** Replaces the sensitive path prefixes (callers validate and deduplicate). */
+export function setSensitivePaths(db: Db, siteId: number, paths: string[]): void {
+  db.prepare('UPDATE sites SET sensitive_paths = ? WHERE id = ?').run(JSON.stringify(paths), siteId);
+}

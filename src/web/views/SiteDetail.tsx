@@ -1,11 +1,45 @@
 import { fmtAgo, fmtDate, fmtDateTime, fmtNum, pct } from '../format.js';
-import type { NavData, SiteSummary } from '../queries.js';
+import type { HeaderEntry } from '../../headers.js';
+import type { NavData, SiteSummary, TileState, TypeTile } from '../queries.js';
+import { FAMILIES, typePageHref } from '../typePages.js';
 import { KEEP_DISCARDED } from '../../store/discarded.js';
-import { Chart, CopyBlock, DiscardedTable, Empty, Head, Metric, NoiseTable, OriginActions, Section, StatusPill } from './components.js';
+import { Chart, CopyBlock, DiscardedTable, Empty, Head, Metric, NoiseTable, Pill, OriginActions, Section, StatusPill } from './components.js';
 import { Layout } from './Layout.js';
 import { EndLearning } from './SiteSettings.js';
 
-export function SiteDetail(props: { nav: NavData; data: SiteSummary; strict: string; suggested: string; now: number }) {
+const TILE_PILL: Record<TileState, [string, string]> = {
+  inactive: ['non attivo', 'gry'], new: ['', 'red'], active: ['attivo', 'grn'], none: ['nessun report', 'gry'],
+};
+
+function TypeTiles(props: { siteId: number; tiles: TypeTile[] }) {
+  return (
+    <section class="card">
+      <div class="card-head"><h2>Tipi di report</h2><span class="small muted">Ultimi 7 giorni · grigio = header non attivo su questo sito</span></div>
+      {FAMILIES.map(f => (
+        <div class="tile-row">
+          <p class="lbl">{f.label}</p>
+          <div class="grid4">
+            {props.tiles.filter(t => t.def.family === f.key).map(t => {
+              const [label, tone] = TILE_PILL[t.state];
+              return (
+                <a class={`tile${t.state === 'inactive' ? ' off' : ''}`} href={typePageHref(props.siteId, t.def)}>
+                  <span class="tile-name">{t.def.menu}</span>
+                  <span class="mono muted">{t.def.type}</span>
+                  <span class="big">{fmtNum(t.count)}</span>
+                  <Pill tone={tone}>{t.state === 'new' ? `${fmtNum(t.newRows)} ${t.newRows === 1 ? 'nuova' : 'nuove'}` : label}</Pill>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+export function SiteDetail(props: {
+  nav: NavData; data: SiteSummary; strict: string; suggested: string; now: number; tiles: TypeTile[]; extraHeaders: HeaderEntry[];
+}) {
   const { data, now } = props;
   const { site } = data;
   const back = `/sites/${site.id}`;
@@ -27,6 +61,8 @@ export function SiteDetail(props: { nav: NavData; data: SiteSummary; strict: str
         <Metric label="Origini approvate" value={fmtNum(data.approvedCount)} />
         <Metric label="Rumore filtrato 7 gg" value={`${pct(noiseTotal, noiseTotal + data.reports7)}%`} note={`${fmtNum(noiseTotal)} report scartati`} />
       </div>
+
+      <TypeTiles siteId={site.id} tiles={props.tiles} />
 
       <Section title="Da rivedere" note="Approvare vale per le direttive viste finora">
         {data.review.length === 0 ? <Empty>Niente da rivedere.</Empty> : (
@@ -110,6 +146,19 @@ export function SiteDetail(props: { nav: NavData; data: SiteSummary; strict: str
         <CopyBlock id="suggested-header" text={props.suggested} button="Copia suggerito" />
         <p style="margin:16px 0 8px;font-size:13px" class="muted">Versione stretta di partenza:</p>
         <CopyBlock id="strict-header" text={props.strict} button="Copia versione stretta" />
+        {props.extraHeaders.length === 0 ? (
+          <p style="margin:16px 0 0;font-size:13px" class="muted">
+            Attiva altri header (errori di rete, hash degli script, isolamento…) dalle <a href={`/sites/${site.id}/settings`}>Impostazioni</a>.
+          </p>
+        ) : (
+          <>
+            <h3 style="margin:20px 0 8px">Header per le funzioni attive</h3>
+            <CopyBlock id="extra-headers" text={props.extraHeaders.map(h => `${h.name}: ${h.value}`).join('\n')} button="Copia header" />
+            <ul class="small muted" style="margin:12px 0 0;padding-left:18px">
+              {props.extraHeaders.map(h => <li><span class="mono">{h.name}</span>: {h.note}</li>)}
+            </ul>
+          </>
+        )}
       </section>
     </Layout>
   );

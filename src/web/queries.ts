@@ -6,6 +6,7 @@ import { listDiscarded, type Discarded } from '../store/discarded.js';
 import { listSites, type Site } from '../store/sites.js';
 import { utcDay } from '../time.js';
 import { isApprovableSource, parsePattern } from './validate.js';
+import { TYPE_PAGES, type TypePageDef } from './typePages.js';
 
 const DAY = 86_400_000;
 const SILENT_AFTER = 3 * DAY;
@@ -410,4 +411,20 @@ export function typeSeries(db: Db, siteId: number, reportType: string, now: numb
     if (i >= 0) values[i] = r.n;
   }
   return { days, values };
+}
+
+export type TileState = 'inactive' | 'new' | 'active' | 'none';
+export type TypeTile = { def: TypePageDef; count: number; newRows: number; state: TileState };
+
+/**
+ * One tile per report type for the site summary: 7-day count and a state.
+ * Types without a setup feature only need Reporting-Endpoints, which is always emitted, so they count as enabled.
+ */
+export function typeTiles(db: Db, site: Site, now: number): TypeTile[] {
+  return TYPE_PAGES.map((def) => {
+    const s = typeStats(db, site.id, def.type, now);
+    const enabled = def.setupFeature === null || site.enabledHeaders.includes(def.setupFeature);
+    const state: TileState = !enabled && s.reports7 === 0 ? 'inactive' : s.newRows > 0 ? 'new' : s.reports7 > 0 ? 'active' : 'none';
+    return { def, count: s.reports7, newRows: s.newRows, state };
+  });
 }
