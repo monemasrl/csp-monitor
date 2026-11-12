@@ -96,13 +96,17 @@ export const hashHandler: ReportHandler<HashEvent> = {
       updateDetail(ctx.db, r.originId, detail);
       return r;
     }
+    // Already changed once and still unreviewed ('new'): keep tracking but do not alert again.
+    const alreadyFlagged = r.status === 'new' && prev?.flagged === true;
     detail.previousHash = prevHash;
     detail.changedAt = ctx.now;
     if (prev?.volatile === true || inRelease(ctx.db, ctx.site.id, ctx.now)) {
       updateDetail(ctx.db, r.originId, detail);
       return r;
     }
+    detail.flagged = true; // an alert went out (or is already pending review) for this row
     updateDetail(ctx.db, r.originId, detail, 'new');
+    if (alreadyFlagged) return r;
     return { ...r, status: 'new', hashChange: { previousHash: prevHash, currentHash: e.hash } };
   },
   decide(ctx, _e, r: HashResult) {

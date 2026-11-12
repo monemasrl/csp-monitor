@@ -57,6 +57,28 @@ describe('csp-hash', () => {
     expect(status(a.r.originId)).toBe('new');
     expect(getDetail(deps.db, a.r.originId)).toMatchObject({ currentHash: 'sha256-BBB', previousHash: 'sha256-AAA', changedAt: T + 5 });
   });
+  it('alerts once while unreviewed; again after approval', () => {
+    const a = run(rep({}));
+    expect(run(rep({ hash: 'sha256-BBB' })).alert?.kind).toBe('hash-changed');
+    expect(run(rep({ hash: 'sha256-CCC' })).alert).toBeNull();
+    expect(status(a.r.originId)).toBe('new');
+    expect(getDetail(deps.db, a.r.originId)).toMatchObject({ currentHash: 'sha256-CCC', previousHash: 'sha256-BBB' });
+    deps.db.prepare("UPDATE origins SET status = 'approved' WHERE id = ?").run(a.r.originId);
+    expect(run(rep({ hash: 'sha256-DDD' })).alert?.kind).toBe('hash-changed');
+  });
+  it('volatile: A to D never alerts, status unchanged', () => {
+    const a = run(rep({}));
+    deps.db.prepare("UPDATE origins SET status = 'approved' WHERE id = ?").run(a.r.originId);
+    markVolatile(deps.db, a.r.originId, true);
+    for (const h of ['sha256-BBB', 'sha256-CCC', 'sha256-DDD']) expect(run(rep({ hash: h })).alert).toBeNull();
+    expect(status(a.r.originId)).toBe('approved');
+    expect(getDetail(deps.db, a.r.originId)?.currentHash).toBe('sha256-DDD');
+  });
+  it('a url equal to the document URL is inline, not a subresource', () => {
+    const h = HANDLERS.get('csp-hash')!;
+    const e = h.toEvent(rep({ subresourceURL: undefined, url: 'https://www.gida-spa.it/home' }), site)!;
+    expect(h.keys(e)).toEqual(['script', 'inline:/home']);
+  });
   it('volatile: no alert, hash becomes current, status unchanged', () => {
     const a = run(rep({}));
     deps.db.prepare("UPDATE origins SET status = 'approved' WHERE id = ?").run(a.r.originId);
@@ -88,7 +110,7 @@ describe('csp-hash', () => {
     expect(pages.at(-1)).toBe('/p10');
     expect(new Set(pages).size).toBe(20);
   });
-  it('accepts snake_case and url fallback; invalid without hash or subresource-less url mismatch', () => {
+  it('accepts snake_case and url fallback; invalid without hash or document URL', () => {
     const h = HANDLERS.get('csp-hash')!;
     const snake: RawReport = { type: 'csp-hash', url: 'https://www.gida-spa.it/x', body: { document_url: 'https://www.gida-spa.it/x', subresource_url: 'https://cdn.x.net/a.js', hash: 'sha256-Z' } } as RawReport;
     expect(h.keys(h.toEvent(snake, site)!)).toEqual(['script', 'https://cdn.x.net/a.js']);
