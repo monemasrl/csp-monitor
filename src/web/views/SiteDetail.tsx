@@ -1,6 +1,7 @@
 import { fmtAgo, fmtDate, fmtDateTime, fmtNum, pct } from '../format.js';
 import type { NavData, SiteSummary } from '../queries.js';
-import { Chart, CopyBlock, Empty, Head, Metric, NoiseTable, OriginActions, Section, StatusPill } from './components.js';
+import { KEEP_DISCARDED } from '../../store/discarded.js';
+import { Chart, CopyBlock, DiscardedTable, Empty, Head, Metric, NoiseTable, OriginActions, Section, StatusPill } from './components.js';
 import { Layout } from './Layout.js';
 import { EndLearning } from './SiteSettings.js';
 
@@ -96,6 +97,10 @@ export function SiteDetail(props: { nav: NavData; data: SiteSummary; strict: str
         <Chart title="Report nel tempo" series={data.series} />
         <Section title="Rumore filtrato" note="ultimi 7 giorni"><NoiseTable rows={data.noise7} /></Section>
       </div>
+
+      <Section title="Ultimi report scartati" note={`gli ultimi ${KEEP_DISCARDED}, senza query string; quelli oltre il tetto non vengono conservati`}>
+        <DiscardedTable rows={data.discarded} />
+      </Section>
 
       <section class="card">
         <h2 style="margin-bottom:4px">Header per questo sito</h2>

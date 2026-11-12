@@ -1,0 +1,1 @@
+{"type":"csp-violation","url":"https://www.example.it/","body":{"documentURL":"https://www.example.it/","disposition":"report","referrer":"https://www.example.it/pagina","effectiveDirective":"script-src-elem","blockedURL":"inline","originalPolicy":"default-src 'self'; script-src 'self'; report-uri https://csp.example/r/abc; report-to csp","statusCode":200,"sample":""}}

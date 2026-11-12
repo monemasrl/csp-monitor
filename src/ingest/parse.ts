@@ -42,14 +42,19 @@ function fromReportingApi(value: unknown): RawReport[] {
   return out;
 }
 
-/** Never throws; invalid input yields []. */
-export function parseBody(contentType: string | undefined, text: string): RawReport[] {
+/**
+ * Never throws; invalid input yields []. The format is read from the body, not from the content type:
+ * browsers do not agree (Safari 27 sends a single Reporting API object as application/csp-report).
+ * - array → Reporting API batch;
+ * - object with "csp-report" → legacy report-uri;
+ * - object with "type" and "body" → single Reporting API report.
+ */
+export function parseBody(_contentType: string | undefined, text: string): RawReport[] {
   try {
-    const ct = (contentType ?? '').split(';')[0].trim().toLowerCase();
     const value: unknown = JSON.parse(text);
-    if (ct === 'application/csp-report') return fromLegacy(value);
-    if (ct === 'application/reports+json') return fromReportingApi(value);
-    return Array.isArray(value) ? fromReportingApi(value) : fromLegacy(value);
+    if (Array.isArray(value)) return fromReportingApi(value);
+    if (isObject(value) && 'csp-report' in value) return fromLegacy(value);
+    return fromReportingApi([value]);
   } catch {
     return [];
   }
