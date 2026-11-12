@@ -5,10 +5,15 @@ export type AlertKind =
   | 'new-origin' | 'integrity' | 'new-connection' | 'permission' | 'coop-blocked' | 'coep-blocked'
   | 'hash-changed' | 'new-script' | 'nel-rate' | 'tls-error' | 'crash-spike' | 'deprecation' | 'deprecation-reminder';
 
-/** Origin-based items describe the origin/directive, payload-only items list their payload fields. */
+/**
+ * Origin-based items describe the origin/directive, followed by their payload fields when they have any
+ * (removal date, hashes, counts); payload-only items list just their payload fields.
+ */
 function generic(i: AlertItemAny): string {
-  if (i.originId) return i.directive ? `${i.origin} (${i.directive})` : i.origin;
-  return Object.entries(i.payload ?? {}).map(([k, v]) => `${k}: ${String(v)}`).join(', ');
+  const fields = Object.entries(i.payload ?? {}).map(([k, v]) => `${k}: ${String(v)}`).join(', ');
+  if (!i.originId) return fields;
+  const head = i.directive ? `${i.origin} (${i.directive})` : i.origin;
+  return fields ? `${head} — ${fields}` : head;
 }
 
 export const ALERT_KINDS: Record<AlertKind, { label: string; describe(item: AlertItemAny): string }> = {

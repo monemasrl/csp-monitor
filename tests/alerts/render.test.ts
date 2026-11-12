@@ -75,6 +75,20 @@ describe('EmailChannel', () => {
     expect(m.text).toContain('== Script modificato (2) ==');
     expect(m.html).toContain('<h3>Script modificato (2)</h3>');
   });
+  it('origin items with a payload show the payload too, escaped', () => {
+    const items: AlertItemAny[] = [
+      { ...item({ origin: 'UnloadHandler', directive: 'api' }), kind: 'deprecation-reminder', payload: { api: 'UnloadHandler', removal: '2027-03-01' } },
+      { ...item({ originId: 8, origin: 'https://a.it/app.js', directive: 'script' }), kind: 'hash-changed',
+        payload: { previousHash: 'sha256-<old>', currentHash: 'sha256-new\r\nBcc: y' } },
+    ];
+    const m = renderAlertBatch({ site: { ...site, name: 'S' }, items, pendingIds: [1, 2] }, BASE);
+    expect(m.text).toContain('UnloadHandler (api) — api: UnloadHandler, removal: 2027-03-01');
+    expect(m.text).toContain('previousHash: sha256-<old>, currentHash: sha256-new Bcc: y');
+    expect(m.text).not.toMatch(/\nBcc: y/);
+    expect(m.html).toContain('removal: 2027-03-01');
+    expect(m.html).toContain('previousHash: sha256-&lt;old&gt;');
+    expect(m.html).not.toContain('<old>');
+  });
   it('escapes data of a non-origin kind and links payload items to the site', () => {
     const items: AlertItemAny[] = [{ ...item({ originId: 0, origin: '', directive: '' }), kind: 'nel-rate', payload: { host: '<img src=x>\r\nBcc: y' } }];
     const m = renderAlertBatch({ site: { ...site, name: 'S' }, items, pendingIds: [1] }, BASE);
