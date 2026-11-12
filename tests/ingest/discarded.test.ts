@@ -94,7 +94,7 @@ describe('site page', () => {
 
 describe('privacy', () => {
   it('does not keep the full user agent of parsed reports', () => {
-    const r = JSON.stringify([{ type: 'deprecation', url: 'https://www.example.it/', user_agent: CHROME, body: { id: 'x' } }]);
+    const r = JSON.stringify([{ type: 'crash', url: 'https://www.example.it/', user_agent: CHROME, body: { id: 'x' } }]);
     ingest(deps, site.key, 'application/reports+json', r, T, CHROME);
     const [d] = listDiscarded(deps.db, site.id);
     expect(d!.body).not.toContain('Mozilla');
