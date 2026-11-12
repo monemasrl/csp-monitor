@@ -21,7 +21,7 @@ export type CspEvent = {
 };
 
 const MAX = 200;
-const EXTENSION_SCHEMES = [
+export const EXTENSION_SCHEMES = [
   'chrome-extension',
   'moz-extension',
   'safari-extension',
