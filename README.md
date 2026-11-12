@@ -42,8 +42,10 @@ npm run hash-password
 Chiede la password e stampa l'hash da incollare in `ADMIN_PASSWORD_HASH='...'`. Gli apici singoli sono necessari: l'hash contiene dei `$` che Docker Compose altrimenti interpreta. Senza Node in locale, dopo `docker compose build`:
 
 ```
-docker compose run --rm --no-deps app node -e "import('./dist/auth/password.js').then(m => console.log(m.hashPassword(process.argv[1])))" 'la-tua-password'
+docker compose run --rm --no-deps app -e "import('./dist/auth/password.js').then(m => console.log(m.hashPassword(process.argv[1])))" 'la-tua-password'
 ```
+
+L'immagine è Distroless (nessuna shell, niente `docker exec … sh`): l'entrypoint è `node`, quindi i comandi vanno passati come argomenti di node, come sopra.
 
 Un valore per `SESSION_SECRET`: `openssl rand -hex 32`.
 
