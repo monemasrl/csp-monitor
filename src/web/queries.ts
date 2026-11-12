@@ -425,7 +425,9 @@ export function typeTiles(db: Db, site: Site, now: number): TypeTile[] {
   return TYPE_PAGES.map((def) => {
     const s = typeStats(db, site.id, def.type, now);
     const enabled = def.setupFeature === null || site.enabledHeaders.includes(def.setupFeature);
-    const state: TileState = !enabled && s.reports7 === 0 ? 'inactive' : s.newRows > 0 ? 'new' : s.reports7 > 0 ? 'active' : 'none';
-    return { def, count: s.reports7, newRows: s.newRows, state };
+    // CSP: the same count as the site page's "Da rivedere" (inline/eval rows stay in the dashboard, never to review)
+    const newRows = def.type === 'csp-violation' ? reviewCount(db, site.id) : s.newRows;
+    const state: TileState = !enabled && s.reports7 === 0 ? 'inactive' : newRows > 0 ? 'new' : s.reports7 > 0 ? 'active' : 'none';
+    return { def, count: s.reports7, newRows, state };
   });
 }

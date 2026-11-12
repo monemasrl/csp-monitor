@@ -54,9 +54,19 @@ describe('site summary tiles', () => {
     expect(typeTiles(d.db, getSite(d.db, d.site.id)!, NOW).find(x => x.def.slug === 'coep')!.state).toBe('active');
     rec(d, 'network-error');
     const html = await (await d.get(`/sites/${d.site.id}`)).text();
-    expect(html).toContain('1 nuova');
-    expect(html).toContain('non attivo');
-    expect(html).toContain('attivo');
+    const tile = (slug: string) => html.match(new RegExp(`<a class="tile[^"]*" href="/sites/${d.site.id}/types/${slug}">([\\s\\S]*?)</a>`))?.[1] ?? '';
+    expect(tile('network-error')).toMatch(/<span class="pill [^"]*">1 nuova<\/span>/);
+    expect(tile('coop')).toMatch(/<span class="pill [^"]*">non attivo<\/span>/);
+    expect(tile('coep')).toMatch(/<span class="pill [^"]*">attivo<\/span>/);
+  });
+
+  it('the CSP tile counts new rows like the site page "Da rivedere" (no inline/eval)', async () => {
+    const d = seeded();
+    recordGeneric(d.db, d.site, 'csp-violation', 'script-src', 'https://x.example', 'external', '/p', sample, NOW - 1000);
+    recordGeneric(d.db, d.site, 'csp-violation', 'script-src', 'inline', 'inline', '/p', sample, NOW - 1000);
+    recordGeneric(d.db, d.site, 'csp-violation', 'script-src', 'eval', 'eval', '/p', sample, NOW - 1000);
+    const csp = typeTiles(d.db, d.site, NOW).find(x => x.def.slug === 'csp-violation')!;
+    expect(csp).toMatchObject({ state: 'new', newRows: 1 });
   });
 });
 
