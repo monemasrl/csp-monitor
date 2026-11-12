@@ -43,4 +43,18 @@ describe('parseBody', () => {
   it('accepts content types with parameters', () => {
     expect(parseBody('application/csp-report; charset=utf-8', fixture('csp-report-legacy.json'))).toHaveLength(1);
   });
+  // Safari 27 sends report-uri reports as application/csp-report with a single Reporting API object as body.
+  it('reads the single Reporting API object Safari sends as application/csp-report', () => {
+    const reports = parseBody('application/csp-report', fixture('csp-report-safari.json'));
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatchObject({
+      type: 'csp-violation', url: 'https://www.example.it/',
+      body: { documentURL: 'https://www.example.it/', blockedURL: 'inline', effectiveDirective: 'script-src-elem' },
+    });
+  });
+  it('reads the format from the body whatever the content type says', () => {
+    expect(parseBody('application/reports+json', fixture('csp-report-legacy.json'))).toHaveLength(1);
+    expect(parseBody('application/csp-report', fixture('reports-json-chrome.json'))).toHaveLength(2);
+    expect(parseBody('application/reports+json', fixture('csp-report-safari.json'))).toHaveLength(1);
+  });
 });
