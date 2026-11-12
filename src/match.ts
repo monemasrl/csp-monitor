@@ -31,6 +31,8 @@ export function normalizeOrigin(url: string): string | null {
 export function stripUrl(url: string): string {
   try {
     const u = new URL(url);
+    u.username = '';
+    u.password = '';
     u.search = '';
     u.hash = '';
     return u.toString();
@@ -55,7 +57,16 @@ function hostMatches(patternHost: string, host: string): boolean {
   return p === h;
 }
 
+/** Never throws: malformed patterns or origins simply do not match. */
 export function matchesPattern(pattern: string, origin: string): boolean {
+  try {
+    return matchesPatternUnsafe(pattern, origin);
+  } catch {
+    return false;
+  }
+}
+
+function matchesPatternUnsafe(pattern: string, origin: string): boolean {
   const o = normalizeOrigin(origin);
   if (!o) return false;
   const oUrl = new URL(o);
@@ -71,7 +82,8 @@ export function matchesPattern(pattern: string, origin: string): boolean {
   if (rest.startsWith('*.')) {
     const sub = new URL(`${oScheme}://x.${rest.slice(2)}`);
     const base = cleanHost(sub.hostname).slice(2);
-    if (sub.port && sub.port !== oUrl.port) return false;
+    // Ports are normalized ('' = default): no port in the pattern means default port only.
+    if (sub.port !== oUrl.port) return false;
     return hostMatches('*.' + base, oUrl.hostname);
   }
   const p = normalizeOrigin(`${m[1]!.toLowerCase()}://${rest}`);

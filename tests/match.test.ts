@@ -21,6 +21,7 @@ describe('stripUrl / pathOf', () => {
   it('strips query and fragment', () => {
     expect(stripUrl('https://a.it/p?email=x@y.it#f')).toBe('https://a.it/p');
     expect(stripUrl('not a url')).toBe('');
+    expect(stripUrl('https://user:pw@a.it/p?x#y')).toBe('https://a.it/p');
   });
   it('returns the path', () => {
     expect(pathOf('https://a.it/p/q?x=1')).toBe('/p/q');
@@ -44,6 +45,32 @@ describe('matchesPattern', () => {
     expect(matchesPattern('https://cdn.example.com', 'https://cdn.example.com:8443')).toBe(false);
     expect(matchesPattern('cdn.example.com', 'http://cdn.example.com')).toBe(true);
     expect(matchesPattern('cdn.example.com', 'wss://cdn.example.com')).toBe(true);
+  });
+});
+
+describe('matchesPattern robustness and ports', () => {
+  it.each(['https://*.exa mple.com', 'https://*.example.com:abc', 'https://*.', 'https://', '*.', '', '://x', 'https://*.example.com:99999'])(
+    'does not throw for malformed pattern %j', p => {
+      expect(() => matchesPattern(p, 'https://a.example.com')).not.toThrow();
+      expect(matchesPattern(p, 'https://a.example.com')).toBe(false);
+      expect(() => hostMatchesDomains('a.example.com', [p])).not.toThrow();
+      expect(() => isRiskyWildcard(p)).not.toThrow();
+    });
+  it('does not throw for malformed origin', () => {
+    expect(matchesPattern('https://*.example.com', 'garbage')).toBe(false);
+  });
+  it('scheme wildcard without port matches default port only', () => {
+    expect(matchesPattern('https://*.example.com', 'https://a.example.com')).toBe(true);
+    expect(matchesPattern('https://*.example.com', 'https://a.example.com:8443')).toBe(false);
+    expect(matchesPattern('*.example.com', 'https://a.example.com:8443')).toBe(false);
+    expect(matchesPattern('https://cdn.example.com', 'https://cdn.example.com:8443')).toBe(false);
+  });
+  it('pattern with a port requires that port', () => {
+    expect(matchesPattern('https://*.example.com:8443', 'https://a.example.com:8443')).toBe(true);
+    expect(matchesPattern('https://*.example.com:8443', 'https://a.example.com')).toBe(false);
+    expect(matchesPattern('https://*.example.com:8443', 'https://a.example.com:9000')).toBe(false);
+    expect(matchesPattern('https://*.example.com:443', 'https://a.example.com')).toBe(true);
+    expect(matchesPattern('https://cdn.example.com:8443', 'https://cdn.example.com:8443')).toBe(true);
   });
 });
 
