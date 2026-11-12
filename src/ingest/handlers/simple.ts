@@ -214,7 +214,7 @@ const OTHER_WINDOW = ['otherDocumentURL', 'openerURL', 'openeeURL', 'previousRes
 
 export const coopHandler = simple('coop', body => {
   const other = OTHER_WINDOW.map(n => pick(body, n)).find(v => v !== '');
-  return { keyA: pick(body, 'type'), keyB: other ? originOf(other) : '', category: 'external' };
+  return { keyA: pick(body, 'type'), keyB: other ? originOf(other) : '—', category: 'external' };
 }, (_c, e, r) => (notApproved(r) && e.disposition === 'enforce' ? { kind: 'coop-blocked', originId: r.originId } : null));
 
 export const coepHandler = simple('coep', (body) => {

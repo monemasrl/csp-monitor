@@ -66,7 +66,8 @@ describe('connection-allowlist', () => {
   });
   it('is immediate on a sensitive path prefix', () => {
     const s = { ...site, sensitivePaths: ['/checkout'] };
-    expect(run(fixture('connection-allowlist'), s).alert).toEqual({ kind: 'new-connection', originId: 1, immediate: true });
+    const x = run(fixture('connection-allowlist'), s);
+    expect(x.alert).toEqual({ kind: 'new-connection', originId: x.r.originId, immediate: true });
   });
   it('second occurrence and approved rows do not alert', () => {
     run(fixture('connection-allowlist'));
@@ -134,6 +135,13 @@ describe('coop', () => {
   it('report-only (reporting) does not alert', () => {
     expect(run(withBody(fixture('coop'), { disposition: 'reporting' })).alert).toBeNull();
   });
+  it('without any other-window URL the second key is an em dash and the report is kept', () => {
+    const raw = withBody(fixture('coop'), { previousResponseURL: undefined, nextResponseURL: undefined });
+    expect(run(raw).keys).toEqual(['navigation-from-response', '—']);
+  });
+  it('without body.type the report is invalid', () => {
+    expect(HANDLERS.get('coop')!.toEvent(withBody(fixture('coop'), { type: undefined }), site)).toBeNull();
+  });
   it('takes the first present of the other-document URLs', () => {
     const raw = withBody(fixture('coop'), { previousResponseURL: undefined, openerURL: 'https://op.example.net/x' });
     expect(run(raw).keys[1]).toBe('https://op.example.net');
@@ -155,6 +163,11 @@ describe('coep', () => {
 
 describe('common behaviour', () => {
   const TYPES = ['integrity-violation', 'connection-allowlist', 'permissions-policy-violation', 'document-policy-violation', 'intervention', 'coop', 'coep'];
+  it.each(['connection-allowlist', 'permissions-policy-violation', 'coop', 'coep'])(
+    'no alert during the learning window: %s', t => {
+      const s = { ...site, learningUntil: T + 1000 };
+      expect(run(fixture(t), s).alert).toBeNull();
+    });
   it('never throws on empty or odd bodies', () => {
     for (const t of TYPES) {
       const h = HANDLERS.get(t)!;
