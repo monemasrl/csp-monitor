@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { Hono, type Context } from 'hono';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { bodyLimit } from 'hono/body-limit';
@@ -7,6 +6,7 @@ import { LoginLimiter } from '../auth/limiter.js';
 import { verifyPassword } from '../auth/password.js';
 import { SESSION_COOKIE, SESSION_TTL_MS, signSession, verifySession } from '../auth/session.js';
 import { accessLog } from './accessLog.js';
+import { STYLE_CSS } from './assets.js';
 import { registerDashboard } from './dashboard.js';
 import { COPY_SCRIPT_HASH } from './views/Layout.js';
 import { Login } from './views/Login.js';
@@ -154,7 +154,6 @@ export function createApp(deps: Deps, logWrite?: (line: string) => void): Hono {
     return c.redirect('/login', 303);
   });
 
-  const STYLE_CSS = readFileSync(new URL('../../src/web/static/style.css', import.meta.url), 'utf8');
   app.get('/static/style.css', (c) =>
     c.body(STYLE_CSS, 200, { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'public, max-age=3600' }));
 

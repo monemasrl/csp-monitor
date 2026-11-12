@@ -5,7 +5,9 @@ import type { AlertMessage } from '../alerts/channels.js';
 import { strictHeaders, suggestedHeaders } from '../headers.js';
 import { addApprovalPattern, approveOrigin, markSuspect, removeApproval } from '../store/origins.js';
 import { getSetting, setSetting } from '../store/settings.js';
-import { createSite, endLearning, getSite, startLearning, updateSite, type Site } from '../store/sites.js';
+import {
+  clearSiteData, createSite, deleteSite, endLearning, getSite, startLearning, updateSite, type Site,
+} from '../store/sites.js';
 import { MAX_LEARNING_DAYS } from './views/SiteSettings.js';
 import type { Deps } from './app.js';
 import {
@@ -137,6 +139,29 @@ export function registerDashboard(app: Hono, deps: Deps): void {
     }
     startLearning(db, site.id, deps.now(), days);
     return c.redirect(`/sites/${site.id}/settings`, 303);
+  });
+
+  // --- danger zone: both actions require typing the exact site name ---
+  const confirmed = async (c: Context, site: Site) => one(await readForm(c), 'confirm') === site.name;
+  const wrongName = (c: Context, site: Site) =>
+    refuse(c, `Per confermare scrivi esattamente il nome del sito: ${site.name}`, `/sites/${site.id}/settings`);
+
+  app.post(`${SITE}/clear-data`, async (c) => {
+    const site = siteOf(c);
+    if (!site) return notFound(c);
+    if (!(await confirmed(c, site))) return wrongName(c, site);
+    clearSiteData(db, site.id);
+    deps.known.forgetSite(site.id);
+    return c.redirect(`/sites/${site.id}`, 303);
+  });
+
+  app.post(`${SITE}/delete`, async (c) => {
+    const site = siteOf(c);
+    if (!site) return notFound(c);
+    if (!(await confirmed(c, site))) return wrongName(c, site);
+    deleteSite(db, site.id);
+    deps.known.forgetSite(site.id);
+    return c.redirect('/', 303);
   });
 
   // --- origin actions ---

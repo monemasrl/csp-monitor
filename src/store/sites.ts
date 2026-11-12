@@ -97,6 +97,26 @@ export function startLearning(db: Db, id: number, now: number, days: number): vo
     .run(now + days * 24 * 3600 * 1000, id);
 }
 
+/** Report-derived tables keyed by site (approvals are configuration and are kept by clearSiteData). */
+const SITE_DATA_TABLES = ['samples', 'pending_alerts', 'daily_counts', 'noise_counts', 'origins'] as const;
+
+/** Deletes every report-derived row of a site; the site, its key, settings and approvals stay. */
+export function clearSiteData(db: Db, id: number): void {
+  db.transaction(() => {
+    for (const t of SITE_DATA_TABLES) db.prepare(`DELETE FROM ${t} WHERE site_id = ?`).run(id);
+    db.prepare('UPDATE sites SET last_report_at = NULL WHERE id = ?').run(id);
+  })();
+}
+
+/** Removes the site and everything that belongs to it. */
+export function deleteSite(db: Db, id: number): void {
+  db.transaction(() => {
+    clearSiteData(db, id);
+    db.prepare('DELETE FROM approvals WHERE site_id = ?').run(id);
+    db.prepare('DELETE FROM sites WHERE id = ?').run(id);
+  })();
+}
+
 export function touchSite(db: Db, id: number, now: number): void {
   db.prepare('UPDATE sites SET last_report_at = ? WHERE id = ?').run(now, id);
 }

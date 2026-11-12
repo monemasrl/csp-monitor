@@ -1,3 +1,5 @@
+import { STYLE_HREF } from '../assets.js';
+
 export function Login(props: { error?: string }) {
   return (
     <html lang="it">
@@ -5,7 +7,7 @@ export function Login(props: { error?: string }) {
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>Accedi - CSP Monitor</title>
-        <link rel="stylesheet" href="/static/style.css" />
+        <link rel="stylesheet" href={STYLE_HREF} />
       </head>
       <body>
         <main>
