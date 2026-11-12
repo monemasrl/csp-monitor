@@ -72,6 +72,10 @@ describe('deprecation handler', () => {
     expect(run(rep({ id: 'B', anticipatedRemoval: new Date(T - DAY).toISOString() })).alert).toBeNull();
     expect(reminders()).toHaveLength(0);
   });
+  it('out-of-range number: treated as absent, no throw', () => {
+    expect(run(rep({ anticipatedRemoval: 1e20 })).alert).toBeNull();
+    expect(reminders()).toHaveLength(0);
+  });
   it('due_at already past (removal within 30 days): alert but no reminder', () => {
     const a = run(rep({ anticipatedRemoval: new Date(T + 10 * DAY).toISOString() }));
     expect(a.alert?.kind).toBe('deprecation');

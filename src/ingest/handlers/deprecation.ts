@@ -33,7 +33,8 @@ export type DeprecationEvent = {
 function removalOf(body: Record<string, unknown>): number | null {
   const v = body.anticipatedRemoval ?? body.anticipated_removal;
   const ms = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Date.parse(v) : NaN;
-  return Number.isFinite(ms) && ms > 0 ? ms : null;
+  // Beyond the Date range (8.64e15 ms) the value cannot be formatted: treat it as absent.
+  return Number.isFinite(ms) && ms > 0 && Number.isFinite(new Date(ms).getTime()) ? ms : null;
 }
 
 const day = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
@@ -111,7 +112,7 @@ function findOrigin(db: Db, siteId: number, api: string): { id: number; removal:
   return { id: row.id, removal };
 }
 
-/** Enqueues the due, unsent reminders; each one is marked sent in the same transaction as its enqueue. */
+/** Scheduler job, kept next to its handler per the plan's file list. Enqueues the due, unsent reminders; each one is marked sent in the same transaction as its enqueue. */
 export async function runReminders(deps: Deps, now: number): Promise<void> {
   const { db } = deps;
   const due = db
