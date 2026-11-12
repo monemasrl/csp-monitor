@@ -32,6 +32,9 @@ Variabili di `.env`:
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE` | server SMTP (`SMTP_SECURE=1` per TLS diretto, di solito porta 465) |
 | `SMTP_FROM` | mittente delle email |
 | `ALERT_EMAIL` | destinatario degli avvisi |
+| `LOG_REQUESTS` | `1` (default) scrive una riga per richiesta su stdout, `0` la disattiva |
+
+Le richieste si vedono con `docker compose logs -f app`, una riga per richiesta nel formato `[http] POST /r/<chiave> 204 3ms` (metodo, percorso senza query string, stato, durata). Non vengono registrati IP, user agent, cookie o contenuti. Caddy per impostazione predefinita non tiene un access log, e attivarlo registrerebbe gli IP dei visitatori, cosa che il servizio evita.
 
 Hash della password: con Node 24 e `npm ci` eseguiti in locale
 
