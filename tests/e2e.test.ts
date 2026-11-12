@@ -43,6 +43,14 @@ describe('end to end', () => {
     const row = db.prepare("SELECT id FROM origins WHERE origin = 'https://cdn-stats.xyz'").get() as { id: number };
     expect((await post(`/sites/${site.id}/origins/${row.id}/approve`, { scope: 'site' })).status).toBe(303);
 
+    expect(db.prepare('SELECT status FROM origins WHERE id = ?').get(row.id)).toEqual({ status: 'approved' });
+    expect(db.prepare("SELECT COUNT(*) n FROM approvals WHERE site_id = ? AND pattern = 'https://cdn-stats.xyz'").get(site.id)).toEqual({ n: 1 });
+    const after = await (await get(`/sites/${site.id}`)).text();
+    const reviewSection = (html: string) => html.slice(html.indexOf('Approvare vale'), html.indexOf('Origini approvate e sospette'));
+    expect(reviewSection(page)).toContain('https://cdn-stats.xyz');
+    expect(reviewSection(after)).not.toContain('cdn-stats.xyz');
+    expect(reviewSection(after)).toContain('Niente da rivedere');
+
     // the same origin again: no new pending alert, no message
     expect((await report()).status).toBe(204);
     expect(db.prepare('SELECT COUNT(*) n FROM pending_alerts WHERE sent_at IS NULL').get()).toEqual({ n: 0 });

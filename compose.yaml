@@ -16,7 +16,7 @@ services:
       - "443:443"
       - "443:443/udp"
     environment:
-      CSP_DOMAIN: ${CSP_DOMAIN}
+      CSP_DOMAIN: ${CSP_DOMAIN:?set CSP_DOMAIN in .env}
     volumes:
       - caddy_data:/data
       - caddy_config:/config
