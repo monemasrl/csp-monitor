@@ -11,6 +11,7 @@ export function validEnv(overrides: Record<string, string | undefined> = {}): Re
     BASE_URL: 'https://m.example.it',
     ADMIN_PASSWORD_HASH: 'scrypt$salt$hash',
     SESSION_SECRET: 'x'.repeat(32),
+    LOG_REQUESTS: '0',
     SMTP_HOST: 'smtp.example.it',
     SMTP_FROM: 'csp@example.it',
     ALERT_EMAIL: 'admin@example.it',

@@ -8,6 +8,7 @@ export type Config = {
   secureCookies: boolean;
   smtp: { host: string; port: number; user?: string; pass?: string; from: string; secure: boolean };
   alertEmail: string;
+  logRequests: boolean;
 };
 
 type Env = Record<string, string | undefined>;
@@ -54,5 +55,6 @@ export function loadConfig(env: Env): Config {
       secure: flag(env, 'SMTP_SECURE', false),
     },
     alertEmail: required(env, 'ALERT_EMAIL'),
+    logRequests: flag(env, 'LOG_REQUESTS', true),
   };
 }

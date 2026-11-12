@@ -6,6 +6,7 @@ import { getCookie, setCookie } from 'hono/cookie';
 import { LoginLimiter } from '../auth/limiter.js';
 import { verifyPassword } from '../auth/password.js';
 import { SESSION_COOKIE, SESSION_TTL_MS, signSession, verifySession } from '../auth/session.js';
+import { accessLog } from './accessLog.js';
 import { registerDashboard } from './dashboard.js';
 import { COPY_SCRIPT_HASH } from './views/Layout.js';
 import { Login } from './views/Login.js';
@@ -60,8 +61,9 @@ async function readLimited(req: Request): Promise<string | null> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-export function createApp(deps: Deps): Hono {
+export function createApp(deps: Deps, logWrite?: (line: string) => void): Hono {
   const app = new Hono();
+  if (deps.config.logRequests) app.use('*', accessLog(logWrite));
 
   app.get('/health', (c) => {
     try {
