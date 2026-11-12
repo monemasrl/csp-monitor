@@ -1,4 +1,7 @@
-FROM node:24-bookworm-slim AS build
+# Node 24.19+ ha una regressione negli addon nativi (nodejs/node#65446): better-sqlite3
+# compilato con quegli header va in abort quando libera gli Statement. Compilare
+# con gli header 24.18.1 evita il crash anche sul runtime 24 più recente.
+FROM node:24.18.1-bookworm-slim AS build
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
