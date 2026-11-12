@@ -22,6 +22,21 @@ export function EndLearning(props: { site: Site; now: number }) {
   );
 }
 
+export const MAX_LEARNING_DAYS = 90;
+
+/** Starts learning again (or restarts it from now when already learning). */
+export function StartLearning(props: { site: Site; learning: boolean }) {
+  return (
+    <form method="post" action={`/sites/${props.site.id}/start-learning`} class="row" style="align-items:center;gap:8px">
+      <label for="learning-days" style="font-size:13px">{props.learning ? 'Ricomincia da adesso per' : 'Per'}</label>
+      <select id="learning-days" name="days">
+        {[1, 3, 7, 14, 30].map(d => <option value={String(d)} selected={d === 7}>{d === 1 ? '1 giorno' : `${d} giorni`}</option>)}
+      </select>
+      <button type="submit">{props.learning ? 'Ricomincia apprendimento' : 'Riattiva apprendimento'}</button>
+    </form>
+  );
+}
+
 export function SiteSettings(props: {
   nav: NavData; site: Site; endpoint: string; now: number; form?: SiteForm; errors?: string[];
 }) {
@@ -53,9 +68,10 @@ export function SiteSettings(props: {
         <p style="margin:0 0 10px;font-size:13px" class="muted">
           {learning
             ? `In apprendimento fino al ${fmtDateTime(site.learningUntil)}: niente alert, alla fine arriva un riepilogo.`
-            : `Concluso il ${fmtDateTime(site.learningUntil)}.`}
+            : `Concluso il ${fmtDateTime(site.learningUntil)}. Puoi riattivarlo quando vuoi: le origini nuove non mandano alert finché dura, e alla fine arriva di nuovo il riepilogo.`}
         </p>
         <EndLearning site={site} now={now} />
+        <StartLearning site={site} learning={learning} />
       </section>
     </Layout>
   );

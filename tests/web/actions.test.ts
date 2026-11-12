@@ -99,6 +99,36 @@ describe('dashboard actions', () => {
     expect(await (await get(`/sites/${site.id}`)).text()).not.toContain('Chiudi apprendimento');
   });
 
+  it('start-learning reopens the learning period and resets the summary', async () => {
+    const { db, site, get, post } = seeded();
+    db.prepare('UPDATE sites SET learning_summary_sent = 1 WHERE id = ?').run(site.id);
+    expect(await (await get(`/sites/${site.id}/settings`)).text()).toContain('Riattiva apprendimento');
+    const res = await post(`/sites/${site.id}/start-learning`, { days: '3' });
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toBe(`/sites/${site.id}/settings`);
+    const after = getSite(db, site.id)!;
+    expect(after.learningUntil).toBe(NOW + 3 * DAY);
+    expect(after.learningSummarySent).toBe(false);
+    const page = await (await get(`/sites/${site.id}/settings`)).text();
+    expect(page).toContain('In apprendimento fino al');
+    expect(page).toContain('Ricomincia apprendimento');
+  });
+
+  it('start-learning rejects an invalid number of days', async () => {
+    const { db, site, post } = seeded();
+    for (const days of ['0', '91', 'abc', '2.5', '']) {
+      expect((await post(`/sites/${site.id}/start-learning`, { days })).status).toBe(400);
+    }
+    expect(getSite(db, site.id)!.learningUntil).toBe(site.learningUntil);
+  });
+
+  it('start-learning while learning restarts from now', async () => {
+    const { db, post } = dash();
+    const site = createSite(db, { name: 'N', domains: ['n.it'] }, NOW - DAY);
+    expect((await post(`/sites/${site.id}/start-learning`, { days: '14' })).status).toBe(303);
+    expect(getSite(db, site.id)!.learningUntil).toBe(NOW + 14 * DAY);
+  });
+
   it('risky wildcard shows a warning', async () => {
     const { db, post, get } = seeded();
     const res = await post('/lists/approvals', { pattern: '*.cloudfront.net', directive: ['script-src'], scope: 'global' });
