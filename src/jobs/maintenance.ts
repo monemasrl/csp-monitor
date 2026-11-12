@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, rmSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Db } from '../db/db.js';
+import { BUCKET_MS } from '../store/windows.js';
 import { utcDay } from '../time.js';
 
 const DAY_MS = 86_400_000;
@@ -14,6 +15,9 @@ export function pruneData(db: Db, now: number): void {
     db.prepare('DELETE FROM daily_counts WHERE day < ?').run(cutoffDay);
     db.prepare('DELETE FROM noise_counts WHERE day < ?').run(cutoffDay);
     db.prepare('DELETE FROM pending_alerts WHERE sent_at IS NOT NULL AND sent_at < ?').run(now - 30 * DAY_MS);
+    db.prepare('DELETE FROM window_counts WHERE bucket < ?').run(Math.floor((now - 2 * DAY_MS) / BUCKET_MS));
+    // Unsent reminders are never deleted: only ones already sent more than 90 days ago.
+    db.prepare('DELETE FROM reminders WHERE sent_at IS NOT NULL AND sent_at < ?').run(now - 90 * DAY_MS);
     // Orphans (origin gone) are dropped; NULL-origin samples are ranked per site.
     db.prepare(`DELETE FROM samples WHERE origin_id IS NOT NULL
                   AND origin_id NOT IN (SELECT id FROM origins)`).run();

@@ -67,6 +67,29 @@ describe('pruneData', () => {
     expect(db.prepare('SELECT day FROM noise_counts').all()).toEqual([{ day: edge }]);
     expect(db.prepare('SELECT COUNT(*) c FROM pending_alerts').get()).toEqual({ c: 2 });
   });
+
+  it('prunes window buckets older than 2 days and keeps the newer ones', () => {
+    const db = seed();
+    const cutoffBucket = Math.floor((NOW - 2 * DAY) / 900_000);
+    const ins = db.prepare("INSERT INTO window_counts (site_id, report_type, k, bucket, count) VALUES (1,'csp-violation','script-src|x.com',?,1)");
+    ins.run(cutoffBucket - 1); // just older than 2 days
+    ins.run(cutoffBucket);     // just newer than or at the 2-day boundary
+    pruneData(db, NOW);
+    expect(db.prepare('SELECT bucket FROM window_counts').all()).toEqual([{ bucket: cutoffBucket }]);
+  });
+
+  it('prunes reminders sent more than 90 days ago and keeps unsent ones', () => {
+    const db = seed();
+    const ins = db.prepare('INSERT INTO reminders (site_id, kind, ref, due_at, sent_at) VALUES (1,?,?,?,?)');
+    ins.run('deprecation', 'old-sent', NOW - 100 * DAY, NOW - 91 * DAY);
+    ins.run('deprecation', 'recent-sent', NOW - 100 * DAY, NOW - 89 * DAY);
+    ins.run('deprecation', 'unsent-old-due', NOW - 200 * DAY, null);
+    pruneData(db, NOW);
+    expect(db.prepare('SELECT ref FROM reminders ORDER BY ref').all()).toEqual([
+      { ref: 'recent-sent' },
+      { ref: 'unsent-old-due' },
+    ]);
+  });
 });
 
 describe('backupDb', () => {
