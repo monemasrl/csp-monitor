@@ -1,15 +1,39 @@
 import type { Db } from '../db/db.js';
 import { getSite, listSites, type Site } from '../store/sites.js';
 import type { Deps } from '../web/app.js';
+import type { AlertRequest } from '../ingest/handlers/types.js';
+import type { AlertKind } from './kinds.js';
 import { renderAlertBatch, renderLearningSummary } from './render.js';
 
 export type AlertItem = {
   origin: string; directive: string; page: string; sourceFile: string; sample: string; firstSeen: number; originId: number;
 };
-export type AlertBatch = { site: Site; items: AlertItem[]; pendingIds: number[] };
+/**
+ * One entry of a batch: origin-row data (originId set) or a bare payload (alerts not tied to an origins row;
+ * origin/directive/page are then empty strings).
+ */
+export type AlertItemAny = AlertItem & { kind: AlertKind; payload?: Record<string, unknown> };
+export type AlertBatch = { site: Site; items: AlertItemAny[]; pendingIds: number[] };
 
+/** Kinds that are still alerted when the origin was approved inside the grouping window. */
+const ALERT_EVEN_IF_APPROVED: ReadonlySet<AlertKind> = new Set<AlertKind>(['integrity']);
+
+export function enqueue(db: Db, siteId: number, req: AlertRequest, now: number): void {
+  db.prepare('INSERT INTO pending_alerts (site_id, origin_id, kind, created_at, payload, immediate) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(siteId, req.originId ?? null, req.kind, now, req.payload ? JSON.stringify(req.payload) : null, req.immediate ? 1 : 0);
+}
+
+/** Plan-1 entry point: a new-origin alert. */
 export function enqueueAlert(db: Db, siteId: number, originId: number, now: number): void {
-  db.prepare("INSERT INTO pending_alerts (site_id, origin_id, kind, created_at) VALUES (?, ?, 'new-origin', ?)").run(siteId, originId, now);
+  enqueue(db, siteId, { kind: 'new-origin', originId }, now);
+}
+
+function parsePayload(raw: string | null): Record<string, unknown> | undefined {
+  if (!raw) return undefined;
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : undefined;
+  } catch { return undefined; }
 }
 
 type ItemRow = {
@@ -31,26 +55,32 @@ function toItem(r: ItemRow): AlertItem {
 
 export function dueBatches(db: Db, now: number, groupMs = 600_000): AlertBatch[] {
   const sites = db
-    .prepare('SELECT site_id FROM pending_alerts WHERE sent_at IS NULL GROUP BY site_id HAVING ? - MIN(created_at) >= ? ORDER BY MIN(created_at)')
+    .prepare('SELECT site_id FROM pending_alerts WHERE sent_at IS NULL GROUP BY site_id HAVING ? - MIN(created_at) >= ? OR MAX(immediate) = 1 ORDER BY MIN(created_at)')
     .all(now, groupMs) as { site_id: number }[];
   const batches: AlertBatch[] = [];
   for (const { site_id } of sites) {
     const site = getSite(db, site_id);
     const pending = db
-      .prepare('SELECT id, origin_id FROM pending_alerts WHERE site_id = ? AND sent_at IS NULL ORDER BY created_at, id')
-      .all(site_id) as { id: number; origin_id: number | null }[];
+      .prepare('SELECT id, origin_id, kind, payload FROM pending_alerts WHERE site_id = ? AND sent_at IS NULL ORDER BY created_at, id')
+      .all(site_id) as { id: number; origin_id: number | null; kind: AlertKind; payload: string | null }[];
     if (!site || pending.length === 0) continue;
-    const seen = new Set<number>();
-    const items: AlertItem[] = [];
+    const seen = new Set<string>();
+    const items: AlertItemAny[] = [];
     for (const p of pending) {
-      if (p.origin_id === null || seen.has(p.origin_id)) continue; // a re-alert of the same origin is listed once
-      seen.add(p.origin_id);
+      const payload = parsePayload(p.payload);
+      if (p.origin_id === null) {
+        items.push({ kind: p.kind, origin: '', directive: '', page: '', sourceFile: '', sample: '', firstSeen: 0, originId: 0, ...(payload ? { payload } : {}) });
+        continue;
+      }
+      const key = `${p.kind}:${p.origin_id}`;
+      if (seen.has(key)) continue; // a re-alert of the same (kind, origin) is listed once
+      seen.add(key);
       const row = db.prepare(`${ITEM_SQL} WHERE o.id = ?`).get(p.origin_id) as ItemRow | undefined;
       if (!row) continue;
-      // Approved inside the grouping window: nothing to alert about any more.
+      // Approved inside the grouping window: nothing to alert about any more (except integrity).
       const st = db.prepare('SELECT status FROM origins WHERE id = ?').get(p.origin_id) as { status: string } | undefined;
-      if (st?.status === 'approved') continue;
-      items.push(toItem(row));
+      if (st?.status === 'approved' && !ALERT_EVEN_IF_APPROVED.has(p.kind)) continue;
+      items.push({ ...toItem(row), kind: p.kind, ...(payload ? { payload } : {}) });
     }
     batches.push({ site, items, pendingIds: pending.map(p => p.id) });
   }

@@ -2,7 +2,7 @@ import { serve } from '@hono/node-server';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { EmailChannel } from './alerts/channels.js';
-import { enqueueAlert } from './alerts/queue.js';
+import { enqueue } from './alerts/queue.js';
 import { backupDb, pruneData } from './jobs/maintenance.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { loadConfig } from './config.js';
@@ -20,10 +20,7 @@ known.load(db);
 const deps: Deps = {
   db, config, now: () => Date.now(), channels: [EmailChannel.fromConfig(db, config)],
   limiter: new RateLimiter(), known,
-  onAlert: (s, req, n) => {
-    // Only new-origin alerts have a queue so far; other kinds are ignored until a generic enqueue exists.
-    if (req.kind === 'new-origin') enqueueAlert(db, s, req.originId!, n);
-  },
+  onAlert: (s, req, n) => enqueue(db, s, req, n),
 };
 const app = createApp(deps);
 const runMaintenance = async (_d: unknown, now: number): Promise<void> => {
