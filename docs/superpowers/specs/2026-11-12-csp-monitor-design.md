@@ -18,7 +18,7 @@ L'obiettivo è la **sorveglianza di sicurezza**, non portare i siti a una CSP bl
 4. Dashboard per consultare siti, origini, conteggi e trend, e per approvare un'origine (per un sito o per tutti) così da non ricevere più alert su di essa.
 5. Filtrare il rumore (estensioni del browser, antivirus, traduttori, bot) in modo che non generi alert.
 6. **Verifica della configurazione:** controllare ogni giorno che gli header dei siti mandino davvero i report al servizio, e avvisare quando la configurazione si rompe. *(richiesto da Andrea)*
-7. **Analisi della policy:** dare un punteggio alla CSP che il server manda, con i problemi e le correzioni, e avvisare quando il punteggio di sicurezza scende. *(richiesto da Andrea)*
+7. **Analisi degli header di sicurezza:** dare un punteggio a tutti gli header di sicurezza che il server manda (CSP in dettaglio, più HSTS, cookie, Permissions-Policy, ecc.), con i problemi e le correzioni, e avvisare quando il punteggio di sicurezza scende. *(richiesto da Andrea)*
 
 ## Non obiettivi (per ora)
 
@@ -138,17 +138,26 @@ Ispirata al "Reporting API checker" di CentralCSP, ma solo per uso interno (ness
 - **Storico:** si salva l'esito di ogni verifica (header grezzi compresi) per confrontarlo con il precedente.
 - **Alert:** email quando una verifica automatica trova un problema **grave che nella verifica precedente non c'era**. I problemi di qualità restano solo in dashboard. Errori di rete o risposte bloccate da un firewall vengono mostrati come "verifica non riuscita" e avvisano solo dopo 3 fallimenti consecutivi.
 
-### 8. Analisi della policy *(richiesta da Andrea; dettagli scelti da Claude)*
+### 8. Header di sicurezza *(richiesta da Andrea; dettagli scelti da Claude)*
 
-Ispirata al "CSP scanner" di CentralCSP. Usa gli header già scaricati dalla verifica, quindi gira con la stessa frequenza.
+Ispirata al "Security headers checker" e al "CSP scanner" di CentralCSP. Usa gli header già scaricati dalla verifica, quindi gira con la stessa frequenza e sulle stesse pagine.
+
+**Punteggio degli header** (0–100, con sotto-punteggi sicurezza e qualità), con la CSP come componente più pesante:
+- **Obbligatori:** Content-Security-Policy (bloccante), Strict-Transport-Security (max-age ≥ 1 anno), X-Content-Type-Options `nosniff`, Content-Type con charset, attributi `Secure`/`HttpOnly`/`SameSite` dei cookie.
+- **Consigliati:** Referrer-Policy, Permissions-Policy, Cross-Origin-Opener/Embedder/Resource-Policy, Cache-Control sulle pagine autenticate, Reporting-Endpoints.
+- **Superati:** X-Frame-Options (sostituito da `frame-ancestors`), Report-To (ok solo per NEL).
+- **Deprecati, da togliere:** X-XSS-Protection, Expect-CT e simili.
+- **Cookie:** controllati solo sulle pagine che li impostano, quindi tra le pagine verificate va inclusa quella di login se il sito ne ha una. `HttpOnly` è richiesto per i cookie di sessione, non per quelli letti dal JavaScript del sito (es. lingua): la distinzione si fa per nome, con un elenco modificabile per sito.
+
+**Analisi della CSP in dettaglio:**
 
 - Analizza separatamente la policy **bloccante** e quella **Report-Only**. Se la bloccante manca, il punteggio di sicurezza è 0 e la pagina lo spiega.
 - **Punteggio 0–100** complessivo, più due sotto-punteggi: sicurezza e qualità.
 - **Controlli di sicurezza:** `'unsafe-inline'`, `'unsafe-eval'`, `'unsafe-hashes'`; jolly e schemi troppo larghi (`*`, `https:`, `data:` negli script); host consentiti con bypass noti (JSONP, gadget: partire dalle liste del CSP Evaluator di Google, open source); nonce identico tra due risposte; nonce/hash scritti male o in direttive che li ignorano; `object-src`, `base-uri`, `frame-ancestors` mancanti e coperture reali di `default-src`.
 - **Controlli di qualità:** direttive deprecate (`block-all-mixed-content`, `plugin-types`, …), duplicate, valori sconosciuti, separatori ignorati.
 - Ogni problema ha gravità (critico, alto, medio, basso), spiegazione e correzione.
-- **Storico del punteggio** per sito; il punteggio compare anche nella panoramica.
-- **Alert:** email quando il punteggio di sicurezza scende rispetto alla verifica precedente, indicando il problema nuovo che lo ha causato. Un punteggio basso ma stabile non genera email.
+- **Storico dei punteggi** (header e CSP) per sito; il punteggio degli header compare anche nella panoramica.
+- **Alert:** email quando il punteggio di sicurezza (degli header o della CSP) scende rispetto alla verifica precedente, indicando il problema nuovo che lo ha causato (header sparito, HSTS accorciato, cookie che perde un attributo, CSP indebolita). Un punteggio basso ma stabile non genera email.
 - Il calcolo esatto dei pesi è lasciato a chi costruisce, purché sia deterministico e documentato.
 
 ### 9. Conservazione dei dati
@@ -160,7 +169,7 @@ Ispirata al "CSP scanner" di CentralCSP. Usa gli header già scaricati dalla ver
 
 ## Mockup
 
-Mockup interattivo della dashboard (privato): https://claude.ai/artifact/6Fh6uA4XHSymiLm7rvLdhp — panoramica, riepilogo sito, dettaglio origine, verifica configurazione, analisi della policy e una pagina per ciascuno dei 12 tipi di report. È il riferimento per l'interfaccia; i dati mostrati sono inventati.
+Mockup interattivo della dashboard (privato): https://claude.ai/artifact/6Fh6uA4XHSymiLm7rvLdhp — panoramica, riepilogo sito, dettaglio origine, verifica configurazione, header di sicurezza (con la vista CSP in dettaglio) e una pagina per ciascuno dei 12 tipi di report. È il riferimento per l'interfaccia; i dati mostrati sono inventati.
 
 ## Decisione aperta: tipi di report nella prima versione
 
