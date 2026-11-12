@@ -1,3 +1,4 @@
+import { enqueueAlert } from '../src/alerts/queue.js';
 import { openDb } from '../src/db/db.js';
 import type { Deps } from '../src/web/app.js';
 import { KnownCache, RateLimiter } from '../src/ingest/limits.js';
@@ -18,14 +19,15 @@ export function validEnv(overrides: Record<string, string | undefined> = {}): Re
 }
 
 export function testDeps(overrides: Partial<Deps> = {}): Deps {
+  const db = overrides.db ?? openDb(':memory:');
   return {
-    db: openDb(':memory:'),
+    db,
     config: loadConfig(validEnv()),
     now: () => NOW,
     channels: [],
     limiter: new RateLimiter(),
     known: new KnownCache(),
-    onAlert: () => {}, // Task 9: enqueueAlert
+    onAlert: (s, o, n) => enqueueAlert(db, s, o, n),
     ...overrides,
   };
 }

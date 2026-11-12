@@ -1,13 +1,11 @@
 import { Hono } from 'hono';
+import type { AlertChannel } from '../alerts/channels.js';
 import type { Config } from '../config.js';
 import type { Db } from '../db/db.js';
 import { errId, ingest } from '../ingest/handler.js';
 import type { KnownCache, RateLimiter } from '../ingest/limits.js';
 import { recordNoise } from '../store/origins.js';
 import { getSiteByKey } from '../store/sites.js';
-
-// Placeholder: Task 9 fills this in with the send() contract.
-export interface AlertChannel {}
 
 export type Deps = {
   db: Db;
