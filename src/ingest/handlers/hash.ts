@@ -34,7 +34,9 @@ export function startRelease(db: Db, siteId: number, now: number): void {
   setSetting(db, releaseKey(siteId), String(now + RELEASE_MS));
 }
 
-const inRelease = (db: Db, siteId: number, now: number): boolean => now < Number(getSetting(db, releaseKey(siteId)) ?? 0);
+/** End of the current (or last) release window, 0 when none was ever started. */
+export const releaseUntil = (db: Db, siteId: number): number => Number(getSetting(db, releaseKey(siteId)) ?? 0) || 0;
+const inRelease = (db: Db, siteId: number, now: number): boolean => now < releaseUntil(db, siteId);
 const learning = (ctx: HandlerContext): boolean => ctx.now < ctx.site.learningUntil;
 
 function toEvent(raw: RawReport): HashEvent | null {

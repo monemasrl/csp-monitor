@@ -3,12 +3,16 @@ import type { Context, Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { AlertMessage } from '../alerts/channels.js';
 import { strictHeaders, suggestedHeaders } from '../headers.js';
-import { addApprovalPattern, approveOrigin, markSuspect, removeApproval } from '../store/origins.js';
+import { startRelease } from '../ingest/handlers/hash.js';
+import {
+  addApprovalPattern, approveOrigin, approveTypeRow, markRowSuspect, markSuspect, markVolatile, removeApproval,
+} from '../store/origins.js';
 import { getSetting, setSetting } from '../store/settings.js';
 import {
   clearSiteData, createSite, deleteSite, endLearning, getSite, startLearning, updateSite, type Site,
 } from '../store/sites.js';
 import { MAX_LEARNING_DAYS } from './views/SiteSettings.js';
+import { REVIEWABLE_TYPES, typePageBySlug, typePageData } from './typePages.js';
 import type { Deps } from './app.js';
 import {
   addNoisePattern, cspViolations, deleteNoisePattern, lists, navData, originDetail, originOfSite, overview, siteSummary,
@@ -23,6 +27,7 @@ import { Overview } from './views/Overview.js';
 import { SiteDetail } from './views/SiteDetail.js';
 import { SiteNew } from './views/SiteNew.js';
 import { SiteSettings } from './views/SiteSettings.js';
+import { TypePage } from './views/TypePage.js';
 
 type Body = Record<string, string | File | (string | File)[]>;
 type View = string | Promise<string>;
@@ -92,6 +97,23 @@ export function registerDashboard(app: Hono, deps: Deps): void {
     const q = c.req.query();
     const data = cspViolations(db, site, deps.now(), { directive: q.directive, status: q.status, noise: q.noise });
     return render(c, CspViolations({ nav: nav(), data, now: deps.now() }));
+  });
+
+  app.get(`${SITE}/types/:slug`, (c) => {
+    const site = siteOf(c);
+    const def = typePageBySlug(c.req.param('slug'));
+    if (!site || !def) return notFound(c);
+    if (def.slug === 'csp-violation') return c.redirect(`/sites/${site.id}/csp`, 302);
+    const now = deps.now();
+    return render(c, TypePage({ nav: nav(), data: typePageData(db, site, def, now, deps.config.baseUrl, c.req.query()), now }));
+  });
+
+  app.post(`${SITE}/release`, async (c) => {
+    const site = siteOf(c);
+    if (!site) return notFound(c);
+    const back = safeBack(one(await readForm(c), 'back'), `/sites/${site.id}/types/csp-hash`);
+    startRelease(db, site.id, deps.now());
+    return c.redirect(back, 303);
   });
 
   app.get(ORIGIN, (c) => {
@@ -173,6 +195,11 @@ export function registerDashboard(app: Hono, deps: Deps): void {
     const back = safeBack(one(b, 'back'), `/sites/${site.id}`);
     const scope = one(b, 'scope');
     if (scope !== 'site' && scope !== 'global') return refuse(c, 'Ambito di approvazione non valido.', back);
+    if (target.reportType !== 'csp-violation') {
+      if (!REVIEWABLE_TYPES.has(target.reportType)) return refuse(c, 'Le righe di questo tipo di report non si approvano.', back);
+      approveTypeRow(db, site.id, target, scope, deps.now());
+      return c.redirect(back, 303);
+    }
     const inlineOrEval = target.category === 'inline' || target.category === 'eval';
     if (inlineOrEval || !isApprovableSource(target.origin)) {
       return refuse(c, "Questa origine non si può approvare: inline ed eval restano solo in dashboard, e solo un'origine valida può finire nell'header.", back);
@@ -187,9 +214,23 @@ export function registerDashboard(app: Hono, deps: Deps): void {
     if (!site || !target) return notFound(c);
     const b = await readForm(c);
     const back = safeBack(one(b, 'back'), `/sites/${site.id}`);
+    if (target.reportType !== 'csp-violation') {
+      if (!REVIEWABLE_TYPES.has(target.reportType)) return refuse(c, 'Le righe di questo tipo di report non si segnano come sospette.', back);
+      markRowSuspect(db, Number(c.req.param('oid')));
+      return c.redirect(back, 303);
+    }
     if (target.category === 'inline' || target.category === 'eval') return refuse(c, 'Inline ed eval restano solo in dashboard.', back);
     markSuspect(db, site.id, target.origin);
     return c.redirect(back, 303);
+  });
+
+  app.post(`${ORIGIN}/volatile`, async (c) => {
+    const site = siteOf(c);
+    const target = site && originOfSite(db, site.id, Number(c.req.param('oid')));
+    if (!site || !target || target.reportType !== 'csp-hash') return notFound(c);
+    const b = await readForm(c);
+    markVolatile(db, Number(c.req.param('oid')), one(b, 'value') === '1');
+    return c.redirect(safeBack(one(b, 'back'), `/sites/${site.id}/types/csp-hash`), 303);
   });
 
   // --- approvals and noise ---

@@ -202,6 +202,30 @@ export function markSuspect(db: Db, siteId: number, origin: string): void {
 }
 
 /**
+ * Approval of a row of another report type: an exact approval (pattern = keyB, directive = keyA), and every row
+ * with the same type and keys on this site (all sites when global) becomes approved. CSP rows use approveOrigin.
+ */
+export function approveTypeRow(
+  db: Db, siteId: number, row: { reportType: string; directive: string; origin: string }, scope: 'site' | 'global', now: number,
+): void {
+  db.transaction(() => {
+    insertApproval(db, scope === 'global' ? null : siteId, row.origin, row.directive, now);
+    if (scope === 'global') {
+      db.prepare("UPDATE origins SET status = 'approved' WHERE report_type = ? AND directive = ? AND origin = ?")
+        .run(row.reportType, row.directive, row.origin);
+    } else {
+      db.prepare("UPDATE origins SET status = 'approved' WHERE site_id = ? AND report_type = ? AND directive = ? AND origin = ?")
+        .run(siteId, row.reportType, row.directive, row.origin);
+    }
+  })();
+}
+
+/** Marks one row as suspect (rows of other report types; CSP rows use markSuspect). */
+export function markRowSuspect(db: Db, originId: number): void {
+  db.prepare("UPDATE origins SET status = 'suspect' WHERE id = ?").run(originId);
+}
+
+/**
  * Deletes the approval only. Statuses already set to 'approved' are NOT reverted
  * (history is kept); only future rows stop being auto-approved.
  */
