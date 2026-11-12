@@ -1,6 +1,7 @@
 // Small shared view pieces. Everything rendered here goes through hono/jsx escaping.
 import type { Child } from 'hono/jsx';
-import { fmtDay, fmtNum } from '../format.js';
+import type { Discarded } from '../../store/discarded.js';
+import { fmtDateTime, fmtDay, fmtNum } from '../format.js';
 import type { ReasonCount, Series, StatusKey } from '../queries.js';
 
 const STATUS: Record<StatusKey, [string, string]> = {
@@ -85,6 +86,37 @@ export function Chart(props: { title: string; series: Series }) {
       <Bars values={values} height={136} tall label={`${props.title}, ultimi 30 giorni`} />
       <div class="axis"><span>{fmtDay(days[0]!)}</span><span>{fmtDay(days[Math.floor(days.length / 2)]!)}</span><span>oggi</span></div>
     </section>
+  );
+}
+
+const DISCARD_LABEL: Record<string, string> = { ...NOISE_LABEL, 'unsupported-type': 'Tipo non gestito' };
+
+/** Pretty-prints JSON bodies; anything else is shown as received. */
+function prettyBody(body: string): string {
+  try { return JSON.stringify(JSON.parse(body), null, 2); } catch { return body; }
+}
+
+export function DiscardedTable(props: { rows: Discarded[] }) {
+  if (props.rows.length === 0) return <Empty>Nessun report scartato di recente.</Empty>;
+  return (
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Ricevuto</th><th>Motivo</th><th>Formato</th><th>Browser</th><th>Contenuto</th></tr></thead>
+        <tbody>
+          {props.rows.map(r => (
+            <tr>
+              <td>{fmtDateTime(r.receivedAt)}</td>
+              <td>{DISCARD_LABEL[r.reason] ?? r.reason}{r.detail ? <span class="mono muted"> · {r.detail}</span> : null}</td>
+              <td class="mono muted">{r.contentType ?? '—'}</td>
+              <td class="muted">{r.ua ?? '—'}</td>
+              <td>{r.body
+                ? <details><summary>mostra</summary><pre class="block mono">{prettyBody(r.body)}</pre></details>
+                : <span class="muted">vuoto</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

@@ -41,3 +41,10 @@ CREATE TABLE IF NOT EXISTS pending_alerts (
   created_at INTEGER NOT NULL, sent_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+-- Ultimi report scartati per sito (diagnostica): al massimo KEEP_DISCARDED per sito, corpo senza query string.
+CREATE TABLE IF NOT EXISTS discarded (
+  id INTEGER PRIMARY KEY, site_id INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  received_at INTEGER NOT NULL, reason TEXT NOT NULL, detail TEXT,
+  content_type TEXT, ua TEXT, body TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS discarded_site ON discarded (site_id, received_at);

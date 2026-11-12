@@ -2,6 +2,7 @@
 import type { Db } from '../db/db.js';
 import { BUILTIN_NOISE } from '../ingest/noise.js';
 import { isRiskyWildcard, matchesPattern } from '../match.js';
+import { listDiscarded, type Discarded } from '../store/discarded.js';
 import { listSites, type Site } from '../store/sites.js';
 import { utcDay } from '../time.js';
 import { isApprovableSource, parsePattern } from './validate.js';
@@ -164,6 +165,7 @@ export type SiteSummary = {
   site: Site; series: Series; reports30: number; reviewCount: number; approvedCount: number;
   review: ReviewItem[]; known: OriginRow[]; inline: InlineRow[]; noise7: ReasonCount[]; reports7: number;
   approvedSources: { directive: string; pattern: string }[];
+  discarded: Discarded[];
 };
 
 /** Approvals to put in the suggested header: this site's, plus global ones matching an origin seen on it. */
@@ -197,6 +199,7 @@ export function siteSummary(db: Db, site: Site, now: number): SiteSummary {
     review: reviewItems(db, MAX_ROWS, site.id), known, inline,
     noise7: noiseByReason(db, site.id, now, 7), reports7,
     approvedSources: suggestedSources(db, site.id),
+    discarded: listDiscarded(db, site.id),
   };
 }
 

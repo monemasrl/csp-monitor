@@ -15,6 +15,7 @@ import type { Config } from '../config.js';
 import type { Db } from '../db/db.js';
 import { errId, ingest } from '../ingest/handler.js';
 import type { KnownCache, RateLimiter } from '../ingest/limits.js';
+import { recordDiscarded } from '../store/discarded.js';
 import { recordNoise } from '../store/origins.js';
 import { getSiteByKey } from '../store/sites.js';
 
@@ -168,7 +169,12 @@ export function createApp(deps: Deps, logWrite?: (line: string) => void): Hono {
       const text = await readLimited(c.req.raw);
       if (text === null) {
         const site = getSiteByKey(deps.db, key);
-        if (site) recordNoise(deps.db, site.id, 'invalid', deps.now());
+        if (site) {
+          recordNoise(deps.db, site.id, 'invalid', deps.now());
+          recordDiscarded(deps.db, site.id, deps.now(), 'invalid', {
+            body: '', detail: `corpo oltre ${MAX_BODY / 1024} KB`, contentType: c.req.header('content-type'),
+          });
+        }
       } else {
         ingest(deps, key, c.req.header('content-type'), text, deps.now(), c.req.header('user-agent'));
       }
