@@ -19,7 +19,7 @@ const MIN_TOTAL = 200;
 const MAX_RATE = 0.005;
 const NEL_THROTTLE_MS = 6 * 3_600_000;
 
-/** Crash rule: at least CRASH_MIN in the last 7 days and at least CRASH_FACTOR times the 7 days before. */
+/** Crash rule, per page (spec: "crash di una pagina"): at least CRASH_MIN in the last 7 days and at least CRASH_FACTOR times the 7 days before. */
 const CRASH_MIN = 5;
 const CRASH_FACTOR = 2;
 
@@ -155,12 +155,12 @@ function crashEvent(raw: RawReport): CrashEvent | null {
   }
 }
 
-/** Counts of the row for the 7 days ending today (UTC, inclusive) and for the 7 days before them. */
+/** Crashes of the page, any reason, for the 7 days ending today (UTC, inclusive) and for the 7 days before them. */
 function crashCounts(ctx: HandlerContext, e: CrashEvent): { recent: number; previous: number } {
   const sum = (fromDay: string, toDay: string): number =>
     (ctx.db
-      .prepare("SELECT COALESCE(SUM(count), 0) AS n FROM daily_counts WHERE site_id = ? AND report_type = 'crash' AND directive = ? AND origin = ? AND day BETWEEN ? AND ?")
-      .get(ctx.site.id, e.keyA, e.keyB, fromDay, toDay) as { n: number }).n;
+      .prepare("SELECT COALESCE(SUM(count), 0) AS n FROM daily_counts WHERE site_id = ? AND report_type = 'crash' AND origin = ? AND day BETWEEN ? AND ?")
+      .get(ctx.site.id, e.keyB, fromDay, toDay) as { n: number }).n;
   return {
     recent: sum(utcDay(ctx.now - 6 * DAY), utcDay(ctx.now)),
     previous: sum(utcDay(ctx.now - 13 * DAY), utcDay(ctx.now - 7 * DAY)),

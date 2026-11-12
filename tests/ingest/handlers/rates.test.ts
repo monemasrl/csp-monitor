@@ -179,6 +179,12 @@ describe('crash handler', () => {
     seed('oom', -7, 30); // dwarfs the previous week
     expect(run(crash('oom'), next).alert?.kind).toBe('crash-spike');
   });
+  it('counts every reason on the page: 3 oom + 3 unresponsive this week vs 0 -> crash-spike', () => {
+    seed('oom', 3, 3);
+    seed('unresponsive', 2, 2);
+    const a = run(crash('unresponsive'));
+    expect(a.alert).toMatchObject({ kind: 'crash-spike', payload: { page: '/checkout', last7days: '6', previous7days: '0' } });
+  });
   it('4 -> 6: below 2x the previous week, no alert', () => {
     seed('oom', 10, 4);
     seed('oom', 3, 5);
