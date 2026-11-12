@@ -58,7 +58,7 @@ describe('ingest', () => {
     expect(countNoise(deps.db, site.id, 'invalid')).toBe(1);
   });
   it('ignores non-csp report types silently', () => {
-    ingest(deps, site.key, 'application/reports+json', JSON.stringify([{ type: 'crash', body: { id: 'x' } }]), T);
+    ingest(deps, site.key, 'application/reports+json', JSON.stringify([{ type: 'unknown-x', body: { id: 'x' } }]), T);
     expect(countNoise(deps.db, site.id, 'invalid')).toBe(0);
     expect(deps.db.prepare('SELECT COUNT(*) n FROM samples').get()).toEqual({ n: 0 });
   });

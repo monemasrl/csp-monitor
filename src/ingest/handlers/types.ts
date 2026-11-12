@@ -21,6 +21,7 @@ export interface ReportHandler<E> {
   /** The (keyA, keyB) pair that identifies the event for the rate-limit KnownCache. */
   keys(e: E): [string, string];
   noise(e: E, site: Site, extra: string[]): NoiseReason | null;
-  record(ctx: HandlerContext, e: E, raw: RawReport): RecordResult;
+  /** Null when the report was only counted and nothing was stored (e.g. NEL 'ok'): the pipeline then skips `decide`. */
+  record(ctx: HandlerContext, e: E, raw: RawReport): RecordResult | null;
   decide(ctx: HandlerContext, e: E, r: RecordResult): AlertRequest | null;
 }

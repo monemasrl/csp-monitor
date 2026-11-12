@@ -3,11 +3,12 @@ import { recordNoise } from '../store/origins.js';
 import { getSiteByKey, touchSite } from '../store/sites.js';
 import type { Deps } from '../web/app.js';
 import { HANDLERS } from './handlers/index.js';
+import { dropIps } from './scrub.js';
 import { parseBody, type RawReport } from './parse.js';
 import { reduceUa } from './ua.js';
 
 /** What is kept of a discarded report: no user agent (the reduced label is stored apart). */
-const stored = (r: RawReport): string => JSON.stringify({ type: r.type, url: r.url, body: r.body });
+const stored = (r: RawReport): string => JSON.stringify({ type: r.type, url: r.url, body: dropIps(r.body) });
 
 /** Error name/code only: never the message, which could embed report data. */
 export function errId(e: unknown): string {
@@ -58,6 +59,7 @@ export function ingest(deps: Deps, key: string, contentType: string | undefined,
         const result = handler.record(ctx, event, raw);
         deps.known.add(site.id, raw.type, keyA, keyB);
         touchSite(deps.db, site.id, now);
+        if (!result) continue; // counted only (e.g. NEL 'ok'): nothing to decide
         const alert = handler.decide(ctx, event, result);
         if (alert) {
           deps.onAlert(site.id, alert, now);
