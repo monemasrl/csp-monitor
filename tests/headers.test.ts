@@ -44,6 +44,13 @@ describe('suggestedHeaders', () => {
   });
 });
 
+describe('header notes', () => {
+  it('integrity note talks about scripts in plain Italian', () => {
+    const h = buildHeaderSet('https://m.example.it', 'k', ['integrity'], []).find(x => x.name === 'Integrity-Policy-Report-Only')!;
+    expect(h.note).toContain('gli script di terze parti');
+  });
+});
+
 describe('csp-hash in the CSP header text', () => {
   const base = 'https://m.example.it';
   it("adds 'report-sha256' to script-src in suggested and strict when asked", () => {

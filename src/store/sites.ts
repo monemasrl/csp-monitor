@@ -15,7 +15,10 @@ export type Site = {
   lastReportAt: number | null;
   /** Path prefixes (e.g. /checkout) whose alerts are not delayed. */
   sensitivePaths: string[];
-  /** Optional report types the owner enabled; always includes 'csp'. */
+  /**
+   * Optional report types the owner enabled. 'csp' is guaranteed only once setEnabledHeaders has written the list:
+   * a stored value read back as-is may lack it (e.g. a JSON array with no known feature parses to []).
+   */
   enabledHeaders: HeaderFeature[];
 };
 
