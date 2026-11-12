@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { strictHeaders, suggestedHeaders, buildHeaderSet, type HeaderFeature } from '../src/headers.js';
 
 const expected = (host: string, key: string) =>
-  `Reporting-Endpoints: csp="https://${host}/r/${key}"\n` +
+  `Reporting-Endpoints: csp="https://${host}/r/${key}", default="https://${host}/r/${key}"\n` +
   `Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; form-action 'self'; object-src 'none'; base-uri 'self'; report-uri https://${host}/r/${key}; report-to csp`;
 
 describe('strictHeaders', () => {
@@ -44,6 +44,17 @@ describe('suggestedHeaders', () => {
   });
 });
 
+describe('csp-hash in the CSP header text', () => {
+  const base = 'https://m.example.it';
+  it("adds 'report-sha256' to script-src in suggested and strict when asked", () => {
+    const approved = [{ directive: 'script-src', pattern: 'https://cdn.example' }];
+    expect(suggestedHeaders(base, 'k', approved, { reportSha256: true }))
+      .toContain("script-src 'self' https://cdn.example 'report-sha256';");
+    expect(strictHeaders(base, 'k', { reportSha256: true })).toContain("script-src 'self' 'report-sha256';");
+    expect(strictHeaders(base, 'k')).not.toContain('report-sha256');
+  });
+});
+
 describe('buildHeaderSet', () => {
   const base = 'https://m.example.it';
   const ep = 'https://m.example.it/r/k';
@@ -59,8 +70,7 @@ describe('buildHeaderSet', () => {
   it('csp is only the strict Report-Only policy, equal to strictHeaders', () => {
     const h = buildHeaderSet(base, 'k', ['csp'], []);
     expect(h).toHaveLength(2);
-    expect(`${h[0].name}: ${h[0].value}\n${h[1].name}: ${h[1].value}`.replace('csp="https://m.example.it/r/k", default="https://m.example.it/r/k"', 'csp="https://m.example.it/r/k"'))
-      .toBe(strictHeaders(base, 'k'));
+    expect(`${h[0].name}: ${h[0].value}\n${h[1].name}: ${h[1].value}`).toBe(strictHeaders(base, 'k'));
   });
   it('csp uses the suggested policy when approvals exist', () => {
     const approved = [{ directive: 'img-src', pattern: 'https://cdn.example' }];

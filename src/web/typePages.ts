@@ -7,7 +7,7 @@ import { SENSITIVE_FEATURES } from '../ingest/handlers/simple.js';
 import type { Site } from '../store/sites.js';
 import { fmtAgo, fmtDate, fmtNum } from './format.js';
 import {
-  browserShare, MAX_ROWS, typeRows, typeSeries, typeStats, type BrowserShare, type Series, type StatusKey, type TypeRow, type TypeStats,
+  browserShare, MAX_ROWS, suggestedSources, typeRows, typeSeries, typeStats, type BrowserShare, type Series, type StatusKey, type TypeRow, type TypeStats,
 } from './queries.js';
 import { STATUS_LABEL } from './views/components.js';
 
@@ -261,7 +261,8 @@ export function typePageData(db: Db, site: Site, d: TypePageDef, now: number, ba
   return {
     site, def: d, metrics: d.metrics(db, site.id, now), series: typeSeries(db, site.id, d.type, now),
     browsers: browserShare(db, site.id, now, d.type), rows: rows.slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS, filters,
-    headers: buildHeaderSet(baseUrl, site.key, features, []),
+    // the site's approved CSP sources, so pasting the csp-hash setup never drops the tuned policy
+    headers: buildHeaderSet(baseUrl, site.key, features, suggestedSources(db, site.id)),
     releaseUntil: d.type === 'csp-hash' ? releaseUntil(db, site.id) : 0,
   };
 }

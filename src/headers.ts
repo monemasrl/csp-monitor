@@ -20,12 +20,26 @@ function policy(url: string, directives: [string, string[]][]): string {
   return [...directives.map(([d, s]) => `${d} ${s.join(' ')}`), `report-uri ${url}`, 'report-to csp'].join('; ');
 }
 
-function build(url: string, directives: [string, string[]][]): string {
-  return `Reporting-Endpoints: csp="${url}"\nContent-Security-Policy-Report-Only: ${policy(url, directives)}`;
+/** `default` is the endpoint of every report-to-less header (crash, deprecation, intervention, COOP...). */
+function endpoints(url: string): string {
+  return `csp="${url}", default="${url}"`;
 }
 
-export function strictHeaders(baseUrl: string, key: string): string {
-  return build(endpoint(baseUrl, key), BASE_DIRECTIVES);
+export type CspOptions = { reportSha256?: boolean };
+
+/** csp-hash: 'report-sha256' (CSP3 spec, https://w3c.github.io/webappsec-csp/#grammardef-report-sha256) makes Chrome send csp-hash reports. */
+function withHash(directives: [string, string[]][], opts: CspOptions): [string, string[]][] {
+  return opts.reportSha256
+    ? directives.map(([d, s]): [string, string[]] => (d === 'script-src' ? [d, [...s, "'report-sha256'"]] : [d, s]))
+    : directives;
+}
+
+function build(url: string, directives: [string, string[]][]): string {
+  return `Reporting-Endpoints: ${endpoints(url)}\nContent-Security-Policy-Report-Only: ${policy(url, directives)}`;
+}
+
+export function strictHeaders(baseUrl: string, key: string, opts: CspOptions = {}): string {
+  return build(endpoint(baseUrl, key), withHash(BASE_DIRECTIVES, opts));
 }
 
 /**
@@ -35,9 +49,9 @@ export function strictHeaders(baseUrl: string, key: string): string {
  * patterns replace `'none'` (keeping `'none'` next to a source would be invalid CSP).
  */
 export function suggestedHeaders(
-  baseUrl: string, key: string, approved: { directive: string; pattern: string }[],
+  baseUrl: string, key: string, approved: { directive: string; pattern: string }[], opts: CspOptions = {},
 ): string {
-  return build(endpoint(baseUrl, key), suggestedDirectives(approved));
+  return build(endpoint(baseUrl, key), withHash(suggestedDirectives(approved), opts));
 }
 
 function suggestedDirectives(approved: { directive: string; pattern: string }[]): [string, string[]][] {
@@ -78,13 +92,11 @@ export function buildHeaderSet(
   const ep = endpoint(baseUrl, key);
   const on = new Set(enabled);
   const out: HeaderEntry[] = [{
-    name: 'Reporting-Endpoints', value: `csp="${ep}", default="${ep}"`,
+    name: 'Reporting-Endpoints', value: endpoints(ep),
     note: 'Definisce dove i browser inviano i report: va sempre inviato insieme agli altri header.',
   }];
   if (on.has('csp')) {
-    const directives = suggestedDirectives(approved).map(([d, s]): [string, string[]] =>
-      // csp-hash: 'report-sha256' (CSP3 spec, w3c.github.io/webappsec-csp) makes Chrome send csp-hash reports
-      d === 'script-src' && on.has('csp-hash') ? [d, [...s, "'report-sha256'"]] : [d, s]);
+    const directives = withHash(suggestedDirectives(approved), { reportSha256: on.has('csp-hash') });
     out.push({
       name: 'Content-Security-Policy-Report-Only', value: policy(ep, directives),
       note: 'Policy CSP in sola segnalazione: nessun blocco, i browser moderni la supportano tutti.',

@@ -153,6 +153,7 @@ export function SiteDetail(props: {
         ) : (
           <>
             <h3 style="margin:20px 0 8px">Header per le funzioni attive</h3>
+            <p style="margin:0 0 8px;font-size:13px" class="muted">Vanno aggiunti insieme all'header CSP qui sopra, che contiene già Reporting-Endpoints.</p>
             <CopyBlock id="extra-headers" text={props.extraHeaders.map(h => `${h.name}: ${h.value}`).join('\n')} button="Copia header" />
             <ul class="small muted" style="margin:12px 0 0;padding-left:18px">
               {props.extraHeaders.map(h => <li><span class="mono">{h.name}</span>: {h.note}</li>)}

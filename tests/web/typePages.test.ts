@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { escapeHtml } from '../../src/alerts/render.js';
 import { suggestedHeaders } from '../../src/headers.js';
-import { recordGeneric, type SampleInput } from '../../src/store/origins.js';
+import { addApprovalPattern, recordGeneric, type SampleInput } from '../../src/store/origins.js';
 import { getSetting } from '../../src/store/settings.js';
 import { createSite, endLearning, getSite, type Site } from '../../src/store/sites.js';
 import type { Db } from '../../src/db/db.js';
@@ -25,6 +25,15 @@ function rec(db: Db, site: Site, type: string, keyA: string, keyB: string, o: { 
 
 const SLUGS = ['csp-hash', 'integrity-violation', 'connection-allowlist', 'network-error', 'crash', 'deprecation',
   'intervention', 'permissions-policy', 'document-policy', 'coop', 'coep'];
+
+describe('type page setup headers', () => {
+  it("csp-hash 'Come si attiva' keeps the site's approved CSP sources", async () => {
+    const { db, site, get } = seeded();
+    addApprovalPattern(db, site.id, 'https://cdn.example', ['script-src'], NOW - DAY);
+    const html = await (await get(`/sites/${site.id}/types/csp-hash`)).text();
+    expect(html).toContain(escapeHtml("script-src 'self' https://cdn.example 'report-sha256';"));
+  });
+});
 
 describe('type pages', () => {
   it('defines the 12 types, in the three menu groups', () => {

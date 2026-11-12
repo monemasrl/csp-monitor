@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { recordGeneric, type SampleInput } from '../../src/store/origins.js';
+import { addApprovalPattern, recordGeneric, type SampleInput } from '../../src/store/origins.js';
 import { createSite, endLearning, getSite, setEnabledHeaders } from '../../src/store/sites.js';
 import { typeTiles } from '../../src/web/queries.js';
 import { NOW } from '../helpers.js';
@@ -108,5 +108,32 @@ describe('site page header set', () => {
     expect(html).not.toContain('Header per le funzioni attive');
     expect(html).toContain(`href="/sites/${site.id}/settings"`);
     expect(html).toContain('Attiva altri header');
+  });
+});
+
+describe('site page CSP header with other features', () => {
+  const block = (html: string, id: string): string => {
+    const m = html.match(new RegExp(`<pre class="mono block" id="${id}">([\\s\\S]*?)</pre>`));
+    return (m?.[1] ?? '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  };
+
+  it('csp-hash + approved script origin: one Reporting-Endpoints (csp and default), approved origin and report-sha256', async () => {
+    const { db, site, get } = seeded();
+    setEnabledHeaders(db, site.id, ['csp-hash', 'nel']);
+    addApprovalPattern(db, site.id, 'https://cdn.example', ['script-src'], NOW - DAY);
+    const html = await (await get(`/sites/${site.id}`)).text();
+    const suggested = block(html, 'suggested-header');
+    const extra = block(html, 'extra-headers');
+    const strict = block(html, 'strict-header');
+    const ep = `https://m.example.it/r/${site.key}`;
+    // the suggested header and the extra block are pasted together: a single Reporting-Endpoints line
+    expect(`${suggested}\n${extra}`.split('\n').filter(l => l.startsWith('Reporting-Endpoints:'))).toEqual([
+      `Reporting-Endpoints: csp="${ep}", default="${ep}"`,
+    ]);
+    expect(suggested).toContain("script-src 'self' https://cdn.example 'report-sha256';");
+    expect(strict).toContain("script-src 'self' 'report-sha256';");
+    expect(strict).toContain(`Reporting-Endpoints: csp="${ep}", default="${ep}"`);
+    expect(extra).toContain('NEL:');
+    expect(extra).not.toContain('Content-Security-Policy');
   });
 });

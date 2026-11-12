@@ -170,7 +170,7 @@ export type SiteSummary = {
 };
 
 /** Approvals to put in the suggested header: this site's, plus global ones matching an origin seen on it. */
-function suggestedSources(db: Db, siteId: number): { directive: string; pattern: string }[] {
+export function suggestedSources(db: Db, siteId: number): { directive: string; pattern: string }[] {
   const own = db.prepare('SELECT directive, pattern FROM approvals WHERE site_id = ?').all(siteId) as { directive: string; pattern: string }[];
   const seen = db.prepare("SELECT DISTINCT directive, origin FROM origins WHERE site_id = ? AND report_type = 'csp-violation'").all(siteId) as { directive: string; origin: string }[];
   const globals = globalApprovals(db).filter(g => seen.some(s => s.directive === g.directive && matchesPattern(g.pattern, s.origin)));

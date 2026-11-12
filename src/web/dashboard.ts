@@ -84,15 +84,15 @@ export function registerDashboard(app: Hono, deps: Deps): void {
     if (!site) return notFound(c);
     const now = deps.now();
     const data = siteSummary(db, site, now);
+    const opts = { reportSha256: site.enabledHeaders.includes('csp-hash') };
     return render(c, SiteDetail({
       nav: nav(), data, now,
-      strict: strictHeaders(deps.config.baseUrl, site.key),
-      suggested: suggestedHeaders(deps.config.baseUrl, site.key, data.approvedSources),
+      strict: strictHeaders(deps.config.baseUrl, site.key, opts),
+      suggested: suggestedHeaders(deps.config.baseUrl, site.key, data.approvedSources, opts),
       tiles: typeTiles(db, site, now),
-      // CSP itself is shown above as suggested/strict; here only the other enabled headers (none when only csp is on).
-      extraHeaders: site.enabledHeaders.every(f => f === 'csp') ? []
-        : buildHeaderSet(deps.config.baseUrl, site.key, site.enabledHeaders, data.approvedSources)
-          .filter(h => !h.name.startsWith('Content-Security-Policy')),
+      // Reporting-Endpoints and CSP are shown above as suggested/strict; here only the other enabled headers.
+      extraHeaders: buildHeaderSet(deps.config.baseUrl, site.key, site.enabledHeaders, data.approvedSources)
+        .filter(h => h.name !== 'Reporting-Endpoints' && !h.name.startsWith('Content-Security-Policy')),
     }));
   });
 
