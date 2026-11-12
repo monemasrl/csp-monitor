@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { openDb } from '../../src/db/db.js';
-import { createSite, endLearning, type Site } from '../../src/store/sites.js';
+import { createSite, type Site } from '../../src/store/sites.js';
 import {
   addApprovalPattern, approveOrigin, isCovered, markSuspect, recordCspEvent, recordNoise, removeApproval,
 } from '../../src/store/origins.js';
@@ -71,6 +71,16 @@ describe('recordCspEvent', () => {
     expect(body).not.toContain('#');
     expect(body).not.toContain('u:p@');
     expect(JSON.parse(body)['csp-report']).toMatchObject({ 'blocked-uri': 'https://x.com/a.js', sample: 'inline', blockedURL: 'eval', n: 3 });
+  });
+
+  it('cuts query/fragment/userinfo from unparseable scheme-prefixed strings', () => {
+    const { db, site } = setup();
+    recordCspEvent(db, site, ev(), T0, {
+      a: 'https://a b/?token=1#f', b: 'https://[::1/?q=secret', c: 'https://u:pw@exa mple.com/x?y=1', d: ['wss://h ost/p#frag'],
+    });
+    const body = (db.prepare('SELECT body FROM samples').get() as { body: string }).body;
+    for (const bad of ['?', '#', 'token', 'secret', 'pw', 'u:pw']) expect(body).not.toContain(bad);
+    expect(JSON.parse(body)).toEqual({ a: 'https://a b/', b: 'https://[::1/', c: 'https://exa mple.com/x', d: ['wss://h ost/p'] });
   });
 
   it('falls back to the event as body, and truncates it to 8192 chars', () => {
@@ -218,7 +228,6 @@ describe('decideCspAlert', () => {
     const { db, site } = setup();
     const r = recordCspEvent(db, site, ev(), T0);
     expect(decide(site, ev(), r, T0)).toBe(false);
-    endLearning(db, site.id, T0);
     expect(decide(after(site), ev(), r, T0)).toBe(true);
   });
 

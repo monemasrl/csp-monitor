@@ -23,9 +23,17 @@ export function isCovered(db: Db, siteId: number, origin: string, directive: str
   return rows.some(r => matchesPattern(r.pattern, origin));
 }
 
+/** stripUrl, or for unparseable URLs a manual cut: no query, fragment or userinfo. */
+function cleanUrl(v: string): string {
+  const stripped = stripUrl(v);
+  if (stripped) return stripped;
+  const cut = v.split(/[?#]/, 1)[0]!;
+  return cut.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, '$1');
+}
+
 /** Strings that are absolute web URLs lose query/fragment/credentials; everything else is kept. */
 function sanitize(v: unknown): unknown {
-  if (typeof v === 'string') return URL_SCHEME.test(v.trim()) ? stripUrl(v.trim()) || v : v;
+  if (typeof v === 'string') return URL_SCHEME.test(v.trim()) ? cleanUrl(v.trim()) : v;
   if (Array.isArray(v)) return v.map(sanitize);
   if (v && typeof v === 'object') {
     return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, sanitize(x)]));
