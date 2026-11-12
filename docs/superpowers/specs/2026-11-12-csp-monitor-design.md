@@ -34,12 +34,16 @@ L'obiettivo è la **sorveglianza di sicurezza**, non portare i siti a una CSP bl
 ## Vincoli e scelte già fatte
 
 - **Repo:** `~/Projects/csp-monitor`, GitHub `monemasrl/csp-monitor`, privato. *(deciso da Andrea)*
-- **Piattaforma:** Cloudflare Workers + D1 (SQLite). Andrea usa già Cloudflare. *(scelta di Claude, Andrea non ha obiettato)*
-- **Dashboard:** servita dallo stesso Worker, protetta da **Cloudflare Access** (login solo per Andrea, nessuna autenticazione da scrivere nell'app). *(scelta di Claude)*
-- **Email:** Cloudflare Email Service. *(scelta di Claude)*
+- **Nessun legame con un fornitore specifico** (in particolare Cloudflare). *(deciso da Andrea)* Il servizio deve girare su qualsiasi server con Docker.
+- **Piattaforma:** un'immagine Docker con app Node.js + TypeScript e database **SQLite** su volume persistente, avviata con `docker compose`. Davanti, **Caddy** come reverse proxy con HTTPS automatico (Let's Encrypt), nello stesso `compose.yaml`. *(scelte di Claude: TypeScript come gli altri progetti di Andrea; SQLite basta per il volume previsto ed è un solo file da salvare)*
+- **Dashboard:** servita dalla stessa app, con **login integrato monoutente** (password con hash in variabile d'ambiente, cookie di sessione sicuro, blocco dopo tentativi falliti). *(scelta di Claude)* Il login è necessario perché la dashboard è esposta su Internet insieme all'endpoint.
+- **Email:** via **SMTP** generico (qualsiasi provider), configurato con variabili d'ambiente. *(scelta di Claude)*
+- **Lavori periodici** (pulizia dati, invio email raggruppate, fine periodo di apprendimento, siti silenziosi): scheduler interno all'app, nessun servizio esterno.
+- **Backup:** copia giornaliera consistente del file SQLite (es. `VACUUM INTO`) in una cartella del volume; dove spostarla fuori dal server lo decide Andrea. *(scelta di Claude)*
+- **Server di destinazione:** non ancora scelto; l'immagine non deve presupporne uno.
 - **Webhook e Telegram:** canali aggiuntivi desiderati ("magari"), quindi seconda fase; il modello dati degli alert va pensato per più canali fin da subito.
 - **Integrazione sui siti:** sempre via header HTTP (Andrea può aggiungerlo su tutti i siti), non tramite `<meta>`.
-- **Traffico e budget:** traffico complessivo basso; budget ok per Cloudflare Workers Paid (5 $/mese). *(deciso da Andrea)* Quindi scrittura diretta su D1 a ogni report (aggiornamento contatori + campione), senza code né batching; i tetti di rate limit servono come protezione da casi anomali, non per il normale funzionamento.
+- **Traffico e budget:** traffico complessivo basso; budget contenuto (ordine di 5 $/mese, cioè un piccolo VPS o un server esistente). *(deciso da Andrea)* Quindi scrittura diretta su SQLite a ogni report (aggiornamento contatori + campione), senza code né batching; i tetti di rate limit servono come protezione da casi anomali, non per il normale funzionamento.
 - Lingua dell'interfaccia: italiano.
 
 ## Come funziona
@@ -66,7 +70,7 @@ L'endpoint accetta:
 Regole:
 - Risponde sempre subito `204`, senza dettagli. CORS aperto per `POST`.
 - Body oltre 64 KB scartato.
-- **Rate limit per sito** (es. tetto di report al minuto e al giorno, configurabile); oltre il tetto i report non vengono salvati né contati nel dettaglio, ma **ogni report passa comunque da un controllo leggero "origine già nota per questo sito e direttiva?"** (cache in memoria/KV delle origini note). Un'origine mai vista arriva sempre alla pipeline di alert, anche con il sito oltre il tetto: è esattamente l'evento che il servizio deve intercettare, e un attacco che inonda l'endpoint non deve poterlo nascondere. La dashboard mostra "sito X sta mandando troppi report" con il numero di scartati. *(scelta di Claude)*
+- **Rate limit per sito** (es. tetto di report al minuto e al giorno, configurabile); oltre il tetto i report non vengono salvati né contati nel dettaglio, ma **ogni report passa comunque da un controllo leggero "origine già nota per questo sito e direttiva?"** (cache in memoria delle origini note; anche il rate limit è in memoria, l'app gira in un solo processo). Un'origine mai vista arriva sempre alla pipeline di alert, anche con il sito oltre il tetto: è esattamente l'evento che il servizio deve intercettare, e un attacco che inonda l'endpoint non deve poterlo nascondere. La dashboard mostra "sito X sta mandando troppi report" con il numero di scartati. *(scelta di Claude)*
 - Non si salva l'IP del visitatore. Dagli URL (`document-uri`, `blocked-uri`) si tolgono query string e fragment prima di salvare. Lo user agent si riduce a famiglia browser + versione maggiore.
 
 ### 3. Normalizzazione
@@ -115,7 +119,9 @@ Pagine minime:
 - **Approvazioni globali e rumore noto:** elenchi modificabili.
 - **Impostazioni alert:** indirizzo email (e in seguito webhook/Telegram).
 
-Interfaccia semplice, renderizzata lato server dal Worker; nessuna necessità di un framework frontend pesante.
+Una rotta `/health` per un controllo di disponibilità esterno (è un sistema di sorveglianza: se va giù, i report si perdono in silenzio).
+
+Interfaccia semplice, renderizzata lato server dall'app; nessuna necessità di un framework frontend pesante.
 
 ### 7. Conservazione dei dati
 
