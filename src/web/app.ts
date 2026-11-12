@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { Hono, type Context } from 'hono';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { bodyLimit } from 'hono/body-limit';
@@ -5,6 +6,8 @@ import { getCookie, setCookie } from 'hono/cookie';
 import { LoginLimiter } from '../auth/limiter.js';
 import { verifyPassword } from '../auth/password.js';
 import { SESSION_COOKIE, SESSION_TTL_MS, signSession, verifySession } from '../auth/session.js';
+import { registerDashboard } from './dashboard.js';
+import { COPY_SCRIPT_HASH } from './views/Layout.js';
 import { Login } from './views/Login.js';
 import type { AlertChannel } from '../alerts/channels.js';
 import type { Config } from '../config.js';
@@ -26,6 +29,10 @@ export type Deps = {
 
 const MAX_BODY = 65_536;
 const MAX_PASSWORD_LENGTH = 1024;
+const DASHBOARD_CSP = [
+  "default-src 'none'", `script-src ${COPY_SCRIPT_HASH}`, "style-src 'self' 'unsafe-inline'", "img-src 'self'",
+  "form-action 'self'", "frame-ancestors 'none'", "base-uri 'none'",
+].join('; ');
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -95,6 +102,17 @@ export function createApp(deps: Deps): Hono {
     return c.req.method === 'POST' ? dashboardBodyLimit(c, next) : next();
   });
 
+  // Defense in depth for every dashboard response (escaping is the primary protection).
+  app.use('*', async (c, next) => {
+    await next();
+    const path = c.req.path;
+    if (path === '/health' || path === '/r' || path.startsWith('/r/')) return;
+    c.header('Content-Security-Policy', DASHBOARD_CSP);
+    c.header('X-Frame-Options', 'DENY');
+    c.header('X-Content-Type-Options', 'nosniff');
+    c.header('Referrer-Policy', 'same-origin');
+  });
+
   app.get('/login', (c) => c.html(Login({})));
   app.post('/login', async (c) => {
     const ip = clientIp(c);
@@ -133,6 +151,12 @@ export function createApp(deps: Deps): Hono {
     });
     return c.redirect('/login', 303);
   });
+
+  const STYLE_CSS = readFileSync(new URL('../../src/web/static/style.css', import.meta.url), 'utf8');
+  app.get('/static/style.css', (c) =>
+    c.body(STYLE_CSS, 200, { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'public, max-age=3600' }));
+
+  registerDashboard(app, deps);
 
   const empty204 = () => new Response(null, { status: 204, headers: CORS });
 
