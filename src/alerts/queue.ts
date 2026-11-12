@@ -113,7 +113,7 @@ export async function runLearningSummaries(deps: Deps, now: number): Promise<voi
     if (site.learningSummarySent || now < site.learningUntil) continue;
     try {
       const rows = deps.db
-        .prepare(`${ITEM_SQL} WHERE o.site_id = ? AND o.status = 'new' AND o.first_seen < ? AND o.category NOT IN ('inline', 'eval', 'self') ORDER BY o.first_seen, o.id`)
+        .prepare(`${ITEM_SQL} WHERE o.site_id = ? AND o.report_type = 'csp-violation' AND o.status = 'new' AND o.first_seen < ? AND o.category NOT IN ('inline', 'eval', 'self') ORDER BY o.first_seen, o.id`)
         .all(site.id, site.learningUntil) as ItemRow[];
       const msg = renderLearningSummary(site, rows.map(toItem), deps.config.baseUrl);
       for (const ch of deps.channels) await ch.send(msg);

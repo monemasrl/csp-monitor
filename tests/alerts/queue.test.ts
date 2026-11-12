@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AlertChannel } from '../../src/alerts/channels.js';
 import { approveOrigin } from '../../src/store/origins.js';
 import { dueBatches, enqueue, enqueueAlert, markSent, runDueAlerts, runLearningSummaries } from '../../src/alerts/queue.js';
-import { recordCspEvent } from '../../src/store/origins.js';
+import { recordCspEvent, recordGeneric } from '../../src/store/origins.js';
 import { createSite, endLearning, getSite } from '../../src/store/sites.js';
 import type { CspEvent } from '../../src/ingest/csp.js';
 import { NOW as T, testDeps } from '../helpers.js';
@@ -124,6 +124,21 @@ describe('learning summary', () => {
     const withOrigin = ch.sent.filter(m => m.text.includes('late.example'));
     expect(withOrigin).toHaveLength(1);
     expect(withOrigin[0]!.subject).not.toContain('apprendimento');
+  });
+
+  it('lists only csp-violation rows (csp-hash / coop rows stay out)', async () => {
+    const { deps, db, s1, o } = setup();
+    const at = T - 15 * 86400_000;
+    o(s1, 'https://c1.example', at);
+    const smp = { sourceFile: '', sample: '', line: null, ua: '', disposition: 'report', body: '{}' };
+    recordGeneric(db, s1, 'csp-hash', 'script', 'https://hash.example/app.js', 'external', '/p', smp, at);
+    recordGeneric(db, s1, 'coop', 'navigation-to-document', 'https://coop.example', 'external', '/p', smp, at);
+    const ch = fake();
+    await runLearningSummaries(withChannels(deps, [ch]), T);
+    const m1 = ch.sent.find(m => m.subject.includes('S1'))!;
+    expect(m1.subject).toBe('[CSP Monitor] S1: fine apprendimento, 1 origini da rivedere');
+    expect(m1.text).not.toContain('hash.example');
+    expect(m1.text).not.toContain('coop.example');
   });
 
   it('retries when sending fails and skips sites still learning', async () => {
