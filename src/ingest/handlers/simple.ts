@@ -35,11 +35,11 @@ export type SimpleEvent = {
 const MAX = 200;
 const URL_MAX = 2048;
 
-const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
-const noQuery = (s: string): string => s.split(/[?#]/, 1)[0]!;
+export const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+export const noQuery = (s: string): string => s.split(/[?#]/, 1)[0]!;
 
 /** Looks a field up by any spelling: camelCase, snake_case, kebab-case, any case of URL/Url. First non-empty string wins. */
-function pick(body: Record<string, unknown>, ...names: string[]): string {
+export function pick(body: Record<string, unknown>, ...names: string[]): string {
   const norm = (k: string): string => k.toLowerCase().replace(/[-_]/g, '');
   const entries = Object.entries(body).map(([k, v]) => [norm(k), v] as const);
   for (const n of names) {
@@ -51,7 +51,7 @@ function pick(body: Record<string, unknown>, ...names: string[]): string {
 }
 
 /** Origin of a URL; extension schemes become `scheme:`; anything else is kept without query. '' for an empty input. */
-function originOf(url: string): string {
+export function originOf(url: string): string {
   if (!url) return '';
   const origin = normalizeOrigin(url);
   if (origin) return origin;

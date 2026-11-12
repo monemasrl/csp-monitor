@@ -113,6 +113,31 @@ export function recordGeneric(
   return tx();
 }
 
+/** The type-specific JSON of a row, or null when absent or unreadable. */
+export function getDetail(db: Db, originId: number): Record<string, unknown> | null {
+  const row = db.prepare('SELECT detail FROM origins WHERE id = ?').get(originId) as { detail: string | null } | undefined;
+  if (!row?.detail) return null;
+  try {
+    const v: unknown = JSON.parse(row.detail);
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Replaces the detail JSON of a row; with `status` it also moves the row to that status. */
+export function updateDetail(db: Db, originId: number, detail: object, status?: RecordResult['status']): void {
+  if (status) db.prepare('UPDATE origins SET detail = ?, status = ? WHERE id = ?').run(JSON.stringify(detail), status, originId);
+  else db.prepare('UPDATE origins SET detail = ? WHERE id = ?').run(JSON.stringify(detail), originId);
+}
+
+/** Flags a row as "changes often" (volatile): hash changes on it no longer alert. */
+export function markVolatile(db: Db, originId: number, value: boolean): void {
+  const d = getDetail(db, originId);
+  if (!d) return;
+  updateDetail(db, originId, { ...d, volatile: value });
+}
+
 export function recordCspEvent(
   db: Db, site: Site, e: CspEvent, now: number, raw?: Record<string, unknown>,
 ): RecordResult {
