@@ -1,0 +1,16 @@
+[
+  {
+    "type": "coop",
+    "url": "https://www.gida-spa.it/login",
+    "age": 5,
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "body": {
+      "type": "navigation-from-response",
+      "disposition": "enforce",
+      "effectivePolicy": "same-origin",
+      "previousResponseURL": "https://accounts.example.net/auth?token=abc",
+      "referrer": "",
+      "nextResponseURL": "https://www.gida-spa.it/login"
+    }
+  }
+]

@@ -42,6 +42,17 @@ function sanitize(v: unknown): unknown {
   return v;
 }
 
+/** Sanitized JSON text of a raw report body (no query strings or credentials in URLs), capped in size. */
+export function sanitizedBody(raw: unknown): string {
+  let text: string;
+  try {
+    text = JSON.stringify(sanitize(raw)) ?? '{}';
+  } catch {
+    text = '{}';
+  }
+  return text.slice(0, BODY_MAX);
+}
+
 function bodyOf(e: CspEvent, raw?: Record<string, unknown>): string {
   let text: string;
   try {

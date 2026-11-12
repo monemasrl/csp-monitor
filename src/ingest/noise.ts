@@ -27,7 +27,9 @@ const hasExtensionScheme = (s: string): boolean => {
 };
 
 /** Order matters: extension, foreign-document, bot, known-noise. */
-export function classifyNoise(e: CspEvent, siteDomains: string[], extraPatterns: string[]): NoiseReason | null {
+export type NoiseInput = Pick<CspEvent, 'blockedRaw' | 'sourceFile' | 'documentHost' | 'isBot' | 'origin'>;
+
+export function classifyNoise(e: NoiseInput, siteDomains: string[], extraPatterns: string[]): NoiseReason | null {
   if (hasExtensionScheme(e.blockedRaw) || hasExtensionScheme(e.sourceFile)) return 'extension';
   if (!hostMatchesDomains(e.documentHost, siteDomains)) return 'foreign-document';
   if (e.isBot) return 'bot';

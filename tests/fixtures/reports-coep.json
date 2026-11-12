@@ -1,0 +1,15 @@
+[
+  {
+    "type": "coep",
+    "url": "https://www.gida-spa.it/prodotti",
+    "age": 5,
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "body": {
+      "type": "corp",
+      "disposition": "enforce",
+      "blockedURL": "https://img.example.net/p.png?s=1",
+      "destination": "image",
+      "referrer": ""
+    }
+  }
+]

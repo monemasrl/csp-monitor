@@ -7,7 +7,7 @@ import { NOW } from '../helpers.js';
 const DAY = 24 * 3600 * 1000;
 const site: Site = {
   id: 1, name: 'A', key: 'k', domains: ['a.it'], createdAt: NOW - 10 * DAY, learningUntil: NOW - DAY,
-  learningSummarySent: false, ratePerMin: 120, ratePerDay: 20000, lastReportAt: null,
+  learningSummarySent: false, ratePerMin: 120, ratePerDay: 20000, lastReportAt: null, sensitivePaths: [],
 };
 const event: CspEvent = {
   directive: 'script-src', origin: 'https://x.com', category: 'external', page: '/', documentUrl: 'https://a.it/',

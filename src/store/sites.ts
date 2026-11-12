@@ -12,16 +12,28 @@ export type Site = {
   ratePerMin: number;
   ratePerDay: number;
   lastReportAt: number | null;
+  /** Path prefixes (e.g. /checkout) whose alerts are not delayed. */
+  sensitivePaths: string[];
 };
 
 type Row = {
   id: number; name: string; key: string; domains: string; created_at: number; learning_until: number;
   learning_summary_sent: number; rate_per_min: number; rate_per_day: number; last_report_at: number | null;
+  sensitive_paths: string;
 };
 
 const LEARNING_MS = 7 * 24 * 3600 * 1000;
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const KEY_LENGTH = 16;
+
+function parseList(text: string): string[] {
+  try {
+    const v: unknown = JSON.parse(text);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
 function toSite(r: Row): Site {
   return {
@@ -29,6 +41,7 @@ function toSite(r: Row): Site {
     createdAt: r.created_at, learningUntil: r.learning_until,
     learningSummarySent: r.learning_summary_sent !== 0,
     ratePerMin: r.rate_per_min, ratePerDay: r.rate_per_day, lastReportAt: r.last_report_at,
+    sensitivePaths: parseList(r.sensitive_paths),
   };
 }
 

@@ -1,0 +1,14 @@
+[
+  {
+    "type": "integrity-violation",
+    "url": "https://www.gida-spa.it/prodotti?x=1",
+    "age": 5,
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "body": {
+      "documentURL": "https://www.gida-spa.it/prodotti?x=1",
+      "blockedURL": "https://cdn.example.net/lib.js?v=3",
+      "destination": "script",
+      "reportOnly": false
+    }
+  }
+]
