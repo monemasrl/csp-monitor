@@ -1,0 +1,7 @@
+{$CSP_DOMAIN} {
+	@reports path /r/*
+	request_body @reports {
+		max_size 64KiB
+	}
+	reverse_proxy app:3000
+}

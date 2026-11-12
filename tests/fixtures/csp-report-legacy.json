@@ -1,0 +1,16 @@
+{
+  "csp-report": {
+    "document-uri": "https://www.gida-spa.it/prodotti?x=1",
+    "referrer": "https://www.google.com/",
+    "violated-directive": "script-src-elem",
+    "effective-directive": "script-src-elem",
+    "original-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; report-uri https://m.example.it/r/abc123",
+    "disposition": "report",
+    "blocked-uri": "https://cdn-stats.xyz/c.js",
+    "line-number": 42,
+    "column-number": 13,
+    "source-file": "https://www.gida-spa.it/prodotti",
+    "status-code": 200,
+    "script-sample": ""
+  }
+}

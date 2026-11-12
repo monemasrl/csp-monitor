@@ -1,0 +1,40 @@
+[
+  {
+    "age": 12,
+    "body": {
+      "blockedURL": "https://cdn-stats.xyz/c.js",
+      "columnNumber": 13,
+      "disposition": "report",
+      "documentURL": "https://www.gida-spa.it/prodotti?x=1",
+      "effectiveDirective": "script-src-elem",
+      "lineNumber": 42,
+      "originalPolicy": "default-src 'self'; report-to csp-endpoint",
+      "referrer": "",
+      "sample": "",
+      "sourceFile": "https://www.gida-spa.it/prodotti",
+      "statusCode": 200
+    },
+    "type": "csp-violation",
+    "url": "https://www.gida-spa.it/prodotti?x=1",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+  },
+  {
+    "age": 3,
+    "body": {
+      "blockedURL": "inline",
+      "columnNumber": 1,
+      "disposition": "report",
+      "documentURL": "https://www.gida-spa.it/contatti",
+      "effectiveDirective": "script-src-elem",
+      "lineNumber": 88,
+      "originalPolicy": "default-src 'self'; report-to csp-endpoint",
+      "referrer": "",
+      "sample": "window.dataLayer = window.dataLayer || [];",
+      "sourceFile": "https://www.gida-spa.it/contatti",
+      "statusCode": 200
+    },
+    "type": "csp-violation",
+    "url": "https://www.gida-spa.it/contatti",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+  }
+]

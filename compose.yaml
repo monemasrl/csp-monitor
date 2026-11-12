@@ -1,0 +1,28 @@
+services:
+  app:
+    build: .
+    env_file: .env
+    volumes:
+      - data:/data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      CSP_DOMAIN: ${CSP_DOMAIN:?set CSP_DOMAIN in .env}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+
+volumes:
+  data:
+  caddy_data:
+  caddy_config:

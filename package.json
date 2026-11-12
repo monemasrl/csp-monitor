@@ -1,0 +1,30 @@
+{
+  "name": "csp-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "hash-password": "tsx scripts/hash-password.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.7",
+    "better-sqlite3": "^11.10.0",
+    "hono": "^4.13.18",
+    "nodemailer": "^6.10.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.6",
+    "@types/nodemailer": "^8.0.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
+  }
+}

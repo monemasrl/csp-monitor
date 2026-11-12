@@ -1,0 +1,50 @@
+[
+  {
+    "age": 5,
+    "body": {
+      "blockedURL": "https://fonts.googleapis.com/css2?family=Inter",
+      "disposition": "report",
+      "documentURL": "https://www.gida-spa.it/",
+      "effectiveDirective": "style-src-elem",
+      "lineNumber": 10,
+      "columnNumber": 5,
+      "sample": "",
+      "sourceFile": "https://www.gida-spa.it/",
+      "statusCode": 200
+    },
+    "type": "csp-violation",
+    "url": "https://www.gida-spa.it/",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0"
+  },
+  {
+    "age": 8,
+    "body": {
+      "id": "PrefixedStorageInfo",
+      "message": "StorageInfo is deprecated. Please use navigator.storage instead.",
+      "anticipatedRemoval": "2025-06-01T00:00:00.000Z",
+      "sourceFile": "https://www.gida-spa.it/app.js",
+      "lineNumber": 7,
+      "columnNumber": 3
+    },
+    "type": "deprecation",
+    "url": "https://www.gida-spa.it/",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0"
+  },
+  {
+    "age": 1,
+    "body": {
+      "blockedURL": "eval",
+      "disposition": "report",
+      "documentURL": "https://www.gida-spa.it/",
+      "effectiveDirective": "script-src",
+      "lineNumber": 3,
+      "columnNumber": 9,
+      "sample": "",
+      "sourceFile": "https://www.gida-spa.it/app.js",
+      "statusCode": 200
+    },
+    "type": "csp-violation",
+    "url": "https://www.gida-spa.it/",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0"
+  }
+]
