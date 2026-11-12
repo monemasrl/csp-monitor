@@ -55,7 +55,7 @@ Un valore per `SESSION_SECRET`: `openssl rand -hex 32`.
 docker compose up -d
 ```
 
-Apri `https://<CSP_DOMAIN>` e accedi con la password scelta. L'app non pubblica porte: è raggiungibile solo tramite Caddy, che limita a 64 KB il corpo delle richieste su `/r/*`.
+Apri `https://<CSP_DOMAIN>` e accedi con la password scelta. L'app non pubblica porte: è raggiungibile solo tramite Caddy, che limita a 64 KB il corpo delle richieste su `/r/*`: oltre quel limite Caddy risponde `413` (i browser ignorano la risposta, quindi non cambia nulla per i visitatori).
 
 ## Aggiungere un sito
 
@@ -71,7 +71,20 @@ Ogni giorno il servizio salva una copia del database in `backups/` dentro il vol
 docker compose cp app:/data/backups ./backups
 ```
 
-e poi, dal proprio computer, `scp -r server:percorso/backups .`. Per ripristinare, ferma l'app, sostituisci `csp-monitor.sqlite` nel volume con una copia `csp-monitor-AAAA-MM-GG.sqlite` (togliendo eventuali file `-wal` e `-shm`) e riavvia.
+e poi, dal proprio computer, `scp -r server:percorso/backups .`. Per ripristinare (l'immagine non ha una shell, quindi si usa un contenitore temporaneo per i permessi; il nome del volume è `<cartella-del-progetto>_data`, vedi `docker volume ls`):
+
+```
+docker compose stop app
+docker compose cp ./csp-monitor-AAAA-MM-GG.sqlite app:/data/csp-monitor.sqlite
+docker run --rm -v <cartella-del-progetto>_data:/data alpine sh -c 'rm -f /data/csp-monitor.sqlite-wal /data/csp-monitor.sqlite-shm; chown 65532:65532 /data/csp-monitor.sqlite'
+docker compose start app
+```
+
+Il comando `docker compose cp` funziona anche con il container fermo.
+
+## Sessioni
+
+Il logout non revoca le altre sessioni già aperte: per invalidarle tutte basta cambiare `SESSION_SECRET` e riavviare l'app (tutti dovranno rifare il login).
 
 ## Aggiornamento
 
