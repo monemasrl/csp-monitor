@@ -5,7 +5,8 @@ import type { AlertMessage } from '../alerts/channels.js';
 import { strictHeaders, suggestedHeaders } from '../headers.js';
 import { addApprovalPattern, approveOrigin, markSuspect, removeApproval } from '../store/origins.js';
 import { getSetting, setSetting } from '../store/settings.js';
-import { createSite, endLearning, getSite, updateSite, type Site } from '../store/sites.js';
+import { createSite, endLearning, getSite, startLearning, updateSite, type Site } from '../store/sites.js';
+import { MAX_LEARNING_DAYS } from './views/SiteSettings.js';
 import type { Deps } from './app.js';
 import {
   addNoisePattern, cspViolations, deleteNoisePattern, lists, navData, originDetail, originOfSite, overview, siteSummary,
@@ -124,6 +125,18 @@ export function registerDashboard(app: Hono, deps: Deps): void {
     const now = deps.now();
     if (now < site.learningUntil) endLearning(db, site.id, now);
     return c.redirect(`/sites/${site.id}`, 303);
+  });
+
+  app.post(`${SITE}/start-learning`, async (c) => {
+    const site = siteOf(c);
+    if (!site) return notFound(c);
+    const raw = one(await readForm(c), 'days');
+    const days = /^\d{1,2}$/.test(raw) ? Number(raw) : 0;
+    if (days < 1 || days > MAX_LEARNING_DAYS) {
+      return refuse(c, `Indica un numero di giorni tra 1 e ${MAX_LEARNING_DAYS}.`, `/sites/${site.id}/settings`);
+    }
+    startLearning(db, site.id, deps.now(), days);
+    return c.redirect(`/sites/${site.id}/settings`, 303);
   });
 
   // --- origin actions ---

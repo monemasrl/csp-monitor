@@ -91,6 +91,12 @@ export function endLearning(db: Db, id: number, now: number): void {
   db.prepare('UPDATE sites SET learning_until = ? WHERE id = ?').run(now, id);
 }
 
+/** (Re)starts learning for `days` days from now; the end-of-learning summary will be sent again. */
+export function startLearning(db: Db, id: number, now: number, days: number): void {
+  db.prepare('UPDATE sites SET learning_until = ?, learning_summary_sent = 0 WHERE id = ?')
+    .run(now + days * 24 * 3600 * 1000, id);
+}
+
 export function touchSite(db: Db, id: number, now: number): void {
   db.prepare('UPDATE sites SET last_report_at = ? WHERE id = ?').run(now, id);
 }
