@@ -1,0 +1,80 @@
+# CSP Monitor
+
+Servizio personale che riceve i report CSP (Content-Security-Policy-Report-Only) dai browser, scarta il rumore, tiene per ogni sito l'elenco delle origini esterne e manda un'email quando compare un'origine mai vista. Dashboard protetta da password, interfaccia in italiano.
+
+Il servizio non salva mai l'indirizzo IP dei visitatori; dagli URL toglie query string e fragment e riduce lo user agent a famiglia e versione maggiore.
+
+## Requisiti
+
+- Un server con Docker e Docker Compose v2.
+- Un nome di dominio che punta al server (porte 80 e 443 raggiungibili: Caddy ottiene da solo il certificato HTTPS).
+- Un server SMTP per le email di avviso.
+- Node 24 sul proprio computer, solo per generare l'hash della password (in alternativa vedi sotto).
+
+## Configurazione
+
+```
+cp .env.example .env
+```
+
+Variabili di `.env`:
+
+| Variabile | Significato |
+| --- | --- |
+| `PORT` | porta interna dell'app (default 3000) |
+| `BASE_URL` | URL pubblico, es. `https://monitor.example.it` |
+| `CSP_DOMAIN` | dominio servito da Caddy, es. `monitor.example.it` |
+| `DATA_DIR` | cartella dati nel container (default `/data`) |
+| `ADMIN_PASSWORD_HASH` | hash della password di accesso, tra apici singoli |
+| `SESSION_SECRET` | stringa casuale di almeno 32 caratteri |
+| `TRUST_PROXY` | `1` dietro Caddy (legge `X-Forwarded-For` solo per il limite sui login) |
+| `SECURE_COOKIES` | `1` con HTTPS |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE` | server SMTP (`SMTP_SECURE=1` per TLS diretto, di solito porta 465) |
+| `SMTP_FROM` | mittente delle email |
+| `ALERT_EMAIL` | destinatario degli avvisi |
+
+Hash della password: con Node 24 e `npm ci` eseguiti in locale
+
+```
+npm run hash-password
+```
+
+Chiede la password e stampa l'hash da incollare in `ADMIN_PASSWORD_HASH='...'`. Gli apici singoli sono necessari: l'hash contiene dei `$` che Docker Compose altrimenti interpreta. Senza Node in locale, dopo `docker compose build`:
+
+```
+docker compose run --rm --no-deps app node -e "import('./dist/auth/password.js').then(m => console.log(m.hashPassword(process.argv[1])))" 'la-tua-password'
+```
+
+Un valore per `SESSION_SECRET`: `openssl rand -hex 32`.
+
+## Avvio
+
+```
+docker compose up -d
+```
+
+Apri `https://<CSP_DOMAIN>` e accedi con la password scelta. L'app non pubblica porte: è raggiungibile solo tramite Caddy, che limita a 64 KB il corpo delle richieste su `/r/*`.
+
+## Aggiungere un sito
+
+1. In dashboard: "Aggiungi sito", nome e domini.
+2. Nella pagina del sito copia gli header `Reporting-Endpoints` e `Content-Security-Policy-Report-Only` proposti (contengono l'endpoint `/r/<chiave>` del sito) e aggiungili alle risposte del sito.
+3. Per 7 giorni il sito è in apprendimento: le origini viste non generano avvisi. Poi ogni origine nuova arriva per email (raggruppata ogni 10 minuti) e compare in "Da rivedere", dove puoi approvarla o segnarla come sospetta.
+
+## Backup
+
+Ogni giorno il servizio salva una copia del database in `backups/` dentro il volume `data` (dentro il container: `/data/backups/`), tenendo le ultime 14. Per portarle fuori dal server:
+
+```
+docker compose cp app:/data/backups ./backups
+```
+
+e poi, dal proprio computer, `scp -r server:percorso/backups .`. Per ripristinare, ferma l'app, sostituisci `csp-monitor.sqlite` nel volume con una copia `csp-monitor-AAAA-MM-GG.sqlite` (togliendo eventuali file `-wal` e `-shm`) e riavvia.
+
+## Aggiornamento
+
+```
+git pull && docker compose up -d --build
+```
+
+I dati restano nel volume `data`.
