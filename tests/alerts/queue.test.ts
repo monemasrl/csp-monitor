@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { AlertChannel } from '../../src/alerts/channels.js';
+import { approveOrigin } from '../../src/store/origins.js';
 import { dueBatches, enqueueAlert, markSent, runDueAlerts, runLearningSummaries } from '../../src/alerts/queue.js';
 import { recordCspEvent } from '../../src/store/origins.js';
-import { createSite, getSite } from '../../src/store/sites.js';
+import { createSite, endLearning, getSite } from '../../src/store/sites.js';
 import type { CspEvent } from '../../src/ingest/csp.js';
 import { NOW as T, testDeps } from '../helpers.js';
 
@@ -54,12 +55,15 @@ describe('alert queue', () => {
   it('keeps alerts pending when sending fails and never sends twice', async () => {
     const { deps, db, s1, o } = setup();
     const flaky = fake(1);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     enqueueAlert(db, s1.id, o(s1, 'https://c1.example'), T);
     await runDueAlerts(withChannels(deps, [flaky]), T + 600_000);
     expect(flaky.sent).toHaveLength(0);
     await runDueAlerts(withChannels(deps, [flaky]), T + 660_000);
     await runDueAlerts(withChannels(deps, [flaky]), T + 720_000);
     expect(flaky.sent).toHaveLength(1);
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
   });
 
   it('does not mark sent if any channel fails, and one batch failing does not block another', async () => {
@@ -67,17 +71,34 @@ describe('alert queue', () => {
     enqueueAlert(db, s1.id, o(s1, 'https://c1.example'), T);
     enqueueAlert(db, s2.id, o(s2, 'https://c2.example'), T);
     const good = fake();
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     const bad = { name: 'bad', async send(m: { subject: string }) { if (m.subject.includes('S1')) throw new Error('x'); } };
     await runDueAlerts(withChannels(deps, [good, bad]), T + 600_000);
     expect(dueBatches(db, T + 600_000).map(b => b.site.id)).toEqual([s1.id]);
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
+  });
+
+  it('skips origins approved inside the grouping window and sends nothing for an empty batch (M3)', async () => {
+    const { deps, db, s1, o } = setup();
+    const a = o(s1, 'https://c1.example'), b = o(s1, 'https://c2.example');
+    enqueueAlert(db, s1.id, a, T); enqueueAlert(db, s1.id, b, T);
+    approveOrigin(db, s1.id, 'https://c1.example', 'site', T + 1000);
+    const [batch] = dueBatches(db, T + 600_000);
+    expect(batch!.items.map(i => i.origin)).toEqual(['https://c2.example']);
+    approveOrigin(db, s1.id, 'https://c2.example', 'site', T + 2000);
+    const ch = fake();
+    await runDueAlerts(withChannels(deps, [ch]), T + 600_000);
+    expect(ch.sent).toHaveLength(0);
+    expect(dueBatches(db, T + 700_000)).toHaveLength(0);
   });
 });
 
 describe('learning summary', () => {
   it('sends once, with only alertable new origins, even when empty', async () => {
     const { deps, db, s1, s2, o } = setup();
-    o(s1, 'https://c1.example');
-    recordCspEvent(db, s1, ev('inline', { category: 'inline' }), T);
+    o(s1, 'https://c1.example', T - 15 * 86400_000); // first seen while learning
+    recordCspEvent(db, s1, ev('inline', { category: 'inline' }), T - 15 * 86400_000);
     const ch = fake();
     const d = withChannels(deps, [ch]);
     await runLearningSummaries(d, T);
@@ -91,16 +112,33 @@ describe('learning summary', () => {
     expect(s2.id).toBeGreaterThan(0);
   });
 
+  it('does not list an origin first seen after learning ended (I2)', async () => {
+    const { deps, db, s1, o } = setup();
+    endLearning(db, s1.id, T);
+    const late = o(s1, 'https://late.example', T + 2000);
+    enqueueAlert(db, s1.id, late, T + 2000);
+    const ch = fake();
+    const d = withChannels(deps, [ch]);
+    await runLearningSummaries(d, T + 3000);
+    await runDueAlerts(d, T + 2000 + 600_000);
+    const withOrigin = ch.sent.filter(m => m.text.includes('late.example'));
+    expect(withOrigin).toHaveLength(1);
+    expect(withOrigin[0]!.subject).not.toContain('apprendimento');
+  });
+
   it('retries when sending fails and skips sites still learning', async () => {
     const deps = testDeps(); const db = deps.db;
     const s = createSite(db, { name: 'S', domains: ['a.example.it'] }, T - 20 * 86400_000);
     createSite(db, { name: 'Young', domains: ['y.example.it'] }, T);
     const ch = fake(1);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     await runLearningSummaries(withChannels(deps, [ch]), T);
     expect(getSite(db, s.id)!.learningSummarySent).toBe(false);
     await runLearningSummaries(withChannels(deps, [ch]), T + 60_000);
     expect(ch.sent).toHaveLength(1);
     expect(getSite(db, s.id)!.learningSummarySent).toBe(true);
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
   });
 });
 export { BASE };

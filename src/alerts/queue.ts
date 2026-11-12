@@ -46,7 +46,11 @@ export function dueBatches(db: Db, now: number, groupMs = 600_000): AlertBatch[]
       if (p.origin_id === null || seen.has(p.origin_id)) continue; // a re-alert of the same origin is listed once
       seen.add(p.origin_id);
       const row = db.prepare(`${ITEM_SQL} WHERE o.id = ?`).get(p.origin_id) as ItemRow | undefined;
-      if (row) items.push(toItem(row));
+      if (!row) continue;
+      // Approved inside the grouping window: nothing to alert about any more.
+      const st = db.prepare('SELECT status FROM origins WHERE id = ?').get(p.origin_id) as { status: string } | undefined;
+      if (st?.status === 'approved') continue;
+      items.push(toItem(row));
     }
     batches.push({ site, items, pendingIds: pending.map(p => p.id) });
   }
@@ -79,8 +83,8 @@ export async function runLearningSummaries(deps: Deps, now: number): Promise<voi
     if (site.learningSummarySent || now < site.learningUntil) continue;
     try {
       const rows = deps.db
-        .prepare(`${ITEM_SQL} WHERE o.site_id = ? AND o.status = 'new' AND o.category NOT IN ('inline', 'eval', 'self') ORDER BY o.first_seen, o.id`)
-        .all(site.id) as ItemRow[];
+        .prepare(`${ITEM_SQL} WHERE o.site_id = ? AND o.status = 'new' AND o.first_seen < ? AND o.category NOT IN ('inline', 'eval', 'self') ORDER BY o.first_seen, o.id`)
+        .all(site.id, site.learningUntil) as ItemRow[];
       const msg = renderLearningSummary(site, rows.map(toItem), deps.config.baseUrl);
       for (const ch of deps.channels) await ch.send(msg);
       deps.db.prepare('UPDATE sites SET learning_summary_sent = 1 WHERE id = ?').run(site.id);
