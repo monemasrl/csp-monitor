@@ -252,8 +252,8 @@ export function cspViolations(db: Db, site: Site, now: number, raw: { directive?
     .map(r => ({ ...toRow(r, globals), topPage: r.top_page ?? r.first_page ?? '' }));
   const filtered = rows.filter(r => (!filters.directive || r.directive === filters.directive) && (!filters.status || r.status === filters.status));
 
-  const browsers = browserShare(db, site.id, now);
-  const series = siteSeries(db, site.id, now);
+  const browsers = browserShare(db, site.id, now, 'csp-violation');
+  const series = typeSeries(db, site.id, 'csp-violation', now);
   const external = rows.filter(r => r.category !== 'inline' && r.category !== 'eval' && r.category !== 'self');
   return {
     site, filters, directives, rows: filtered.slice(0, MAX_ROWS), truncated: filtered.length > MAX_ROWS, series, browsers,

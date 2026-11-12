@@ -3,6 +3,7 @@ import { escapeHtml } from '../../src/alerts/render.js';
 import { strictHeaders } from '../../src/headers.js';
 import { addApprovalPattern, approveOrigin, recordCspEvent, recordGeneric, recordNoise } from '../../src/store/origins.js';
 import { createSite, endLearning, getSite, touchSite } from '../../src/store/sites.js';
+import { cspViolations } from '../../src/web/queries.js';
 import { NOW } from '../helpers.js';
 import { DAY, dash, ev } from './dash.js';
 
@@ -184,5 +185,19 @@ describe('dashboard pages', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/css');
     expect(await res.text()).toContain('font-family');
+  });
+});
+
+describe('CSP page counts only csp-violation', () => {
+  it('a report of another type does not change the 30-day count, chart or browser share', () => {
+    const { db, site } = seeded();
+    recordCspEvent(db, site, ev({ ua: 'Chrome 131' }), NOW - 1000);
+    const before = cspViolations(db, site, NOW, {});
+    recordGeneric(db, site, 'coop', 'navigation-to-document', 'https://x.example', 'external', '/p',
+      { sourceFile: '', sample: '', line: null, ua: 'Firefox 140', disposition: 'report', body: '{}' }, NOW - 500);
+    const after = cspViolations(db, site, NOW, {});
+    expect(after.totals.reports30).toBe(1);
+    expect(after.series).toEqual(before.series);
+    expect(after.browsers).toEqual([{ name: 'Chrome', pct: 100 }]);
   });
 });
