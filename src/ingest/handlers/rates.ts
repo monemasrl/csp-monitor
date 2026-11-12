@@ -47,7 +47,7 @@ export type NelEvent = {
   keyB: string;
   /** body.type === 'ok': a successful request, only counted. */
   ok: boolean;
-  /** Requests each report stands for: round(1 / sampling_fraction). */
+  /** Requests each report stands for: round(1 / sampling_fraction), at most MAX_WEIGHT. */
   weight: number;
   page: string;
   documentHost: string;
@@ -57,10 +57,22 @@ export type NelEvent = {
   status: number | null;
 };
 
+/** One report never stands for more than this many requests (also guards denormal fractions, where 1 / f is Infinity). */
+const MAX_WEIGHT = 1000;
+
 function weightOf(body: Record<string, unknown>): number {
   const f = body.sampling_fraction ?? body.samplingFraction;
-  return typeof f === 'number' && Number.isFinite(f) && f > 0 && f <= 1 ? Math.max(1, Math.round(1 / f)) : 1;
+  return typeof f === 'number' && Number.isFinite(f) && f > 0 && f <= 1 ? Math.min(MAX_WEIGHT, Math.max(1, Math.round(1 / f))) : 1;
 }
+
+/**
+ * Certificate errors defined by the NEL spec (https://w3c.github.io/network-error-logging/#predefined-network-error-types).
+ * Only these alert immediately: body.type comes from the reporter, so any other tls.cert.* is a normal error.
+ */
+const TLS_CERT_ERRORS: ReadonlySet<string> = new Set([
+  'tls.cert.name_invalid', 'tls.cert.invalid', 'tls.cert.authority_invalid', 'tls.cert.common_name_invalid',
+  'tls.cert.weak_signature_algorithm', 'tls.cert.pinned_key_not_in_cert_chain', 'tls.cert.date_invalid', 'tls.cert.revoked',
+]);
 
 function nelEvent(raw: RawReport): NelEvent | null {
   try {
@@ -109,7 +121,7 @@ export const networkErrorHandler: ReportHandler<NelEvent> = {
   },
   decide(ctx, e, r) {
     if (e.ok || learning(ctx)) return null;
-    if (r.isNewRow && e.keyA.startsWith('tls.cert')) {
+    if (r.isNewRow && TLS_CERT_ERRORS.has(e.keyA)) {
       return { kind: 'tls-error', originId: r.originId, immediate: true, payload: { type: e.keyA, host: e.keyB } };
     }
     const { errors, total } = nelRate(ctx);

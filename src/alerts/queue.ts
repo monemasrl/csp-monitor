@@ -53,10 +53,17 @@ function toItem(r: ItemRow): AlertItem {
   };
 }
 
+/**
+ * Sites with alerts to send: the oldest pending one is at least groupMs old, or one is immediate and the site's
+ * last batch went out at least groupMs ago (so immediate alerts cannot send more than one email per window).
+ */
 export function dueBatches(db: Db, now: number, groupMs = 600_000): AlertBatch[] {
   const sites = db
-    .prepare('SELECT site_id FROM pending_alerts WHERE sent_at IS NULL GROUP BY site_id HAVING ? - MIN(created_at) >= ? OR MAX(immediate) = 1 ORDER BY MIN(created_at)')
-    .all(now, groupMs) as { site_id: number }[];
+    .prepare(`SELECT p.site_id FROM pending_alerts p WHERE p.sent_at IS NULL GROUP BY p.site_id
+      HAVING ? - MIN(p.created_at) >= ? OR (MAX(p.immediate) = 1 AND ? - COALESCE(
+        (SELECT MAX(x.sent_at) FROM pending_alerts x WHERE x.site_id = p.site_id), -1e18) >= ?)
+      ORDER BY MIN(p.created_at)`)
+    .all(now, groupMs, now, groupMs) as { site_id: number }[];
   const batches: AlertBatch[] = [];
   for (const { site_id } of sites) {
     const site = getSite(db, site_id);

@@ -169,6 +169,22 @@ describe('learning summary', () => {
     expect(b[0]!.pendingIds).toHaveLength(2);
   });
 
+  it('immediate makes a site due at most once per grouping window', async () => {
+    const { deps, db, s1, o } = setup();
+    const ch = fake();
+    const d = withChannels(deps, [ch]);
+    enqueue(db, s1.id, { kind: 'tls-error', originId: o(s1, 'https://c1.example'), immediate: true }, T);
+    await runDueAlerts(d, T);
+    expect(ch.sent).toHaveLength(1);
+    enqueue(db, s1.id, { kind: 'tls-error', originId: o(s1, 'https://c2.example'), immediate: true }, T + 60_000);
+    await runDueAlerts(d, T + 60_000);
+    await runDueAlerts(d, T + 599_999);
+    expect(ch.sent).toHaveLength(1);
+    await runDueAlerts(d, T + 600_000);
+    expect(ch.sent).toHaveLength(2);
+    expect(ch.sent[1]!.text).toContain('c2.example');
+  });
+
   it('keeps payloads, dedups per (kind, origin) and keeps integrity when approved', () => {
     const { db, s1, o } = setup();
     const o1 = o(s1, 'https://c1.example');

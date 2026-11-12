@@ -109,6 +109,20 @@ describe('network-error handler', () => {
     const learn = { ...site, learningUntil: T + DAY };
     expect(run(nel({ type: 'tls.cert.name_invalid' }), T, learn).alert).toBeNull();
   });
+  it('only the NEL-spec tls.cert values are tls-error; other tls.cert.* are normal errors', () => {
+    for (const t of ['tls.cert.name_invalid', 'tls.cert.invalid', 'tls.cert.authority_invalid', 'tls.cert.common_name_invalid',
+      'tls.cert.weak_signature_algorithm', 'tls.cert.pinned_key_not_in_cert_chain', 'tls.cert.date_invalid', 'tls.cert.revoked']) {
+      expect(run(nel({ type: t })).alert?.kind, t).toBe('tls-error');
+    }
+    const foo = run(nel({ type: 'tls.cert.foo' }));
+    expect(foo.r!.isNewRow).toBe(true);
+    expect(foo.alert).toBeNull();
+  });
+  it('caps the weight of one report at 1000 (tiny or denormal sampling_fraction)', () => {
+    run(ok(1e-9));
+    run(ok(5e-324));
+    expect(n("SELECT SUM(count) n FROM window_counts WHERE k = 'total'")).toBe(2000);
+  });
   it('non-tls new rows below the threshold do not alert', () => {
     expect(run(nel({ type: 'dns.unreachable' })).alert).toBeNull();
   });
