@@ -16,7 +16,7 @@ export function errId(e: unknown): string {
  * Full pipeline for one POST body. Never throws (errors are logged without report data).
  * A request that yields no reports at all counts as one 'invalid'; non-CSP report types are ignored silently.
  */
-export function ingest(deps: Deps, key: string, contentType: string | undefined, text: string, now: number): void {
+export function ingest(deps: Deps, key: string, contentType: string | undefined, text: string, now: number, requestUa?: string): void {
   try {
     const site = getSiteByKey(deps.db, key);
     if (!site) return;
@@ -29,16 +29,15 @@ export function ingest(deps: Deps, key: string, contentType: string | undefined,
     for (const raw of reports) {
       try {
         if (raw.type !== 'csp-violation') continue;
-        const event = toCspEvent(raw, site.domains);
+        const event = toCspEvent(raw, site.domains, requestUa);
         if (!event) { recordNoise(deps.db, site.id, 'invalid', now); continue; }
-        if (!deps.limiter.allow(site.id, site.ratePerMin, site.ratePerDay, now)) {
-          if (deps.known.has(site.id, event.directive, event.origin) || !deps.limiter.allowUnseen(site.id, now)) {
-            recordNoise(deps.db, site.id, 'rate-limit', now);
-            continue;
-          }
-          // Never-seen pair: still recorded over the limit, capped per site per UTC day (allowUnseen).
-        }
+        const allowed = deps.limiter.allow(site.id, site.ratePerMin, site.ratePerDay, now);
         const noise = classifyNoise(event, site.domains, extra);
+        // Over the limit: only never-seen, non-noise pairs may spend the daily unseen budget.
+        if (!allowed && (noise || deps.known.has(site.id, event.directive, event.origin) || !deps.limiter.allowUnseen(site.id, now))) {
+          recordNoise(deps.db, site.id, 'rate-limit', now);
+          continue;
+        }
         if (noise) { recordNoise(deps.db, site.id, noise, now); continue; }
         const result = recordCspEvent(deps.db, site, event, now, raw.body);
         deps.known.add(site.id, event.directive, event.origin);

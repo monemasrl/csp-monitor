@@ -169,7 +169,7 @@ export function createApp(deps: Deps): Hono {
         const site = getSiteByKey(deps.db, key);
         if (site) recordNoise(deps.db, site.id, 'invalid', deps.now());
       } else {
-        ingest(deps, key, c.req.header('content-type'), text, deps.now());
+        ingest(deps, key, c.req.header('content-type'), text, deps.now(), c.req.header('user-agent'));
       }
     } catch (e) {
       console.error('collect: unexpected failure', errId(e));

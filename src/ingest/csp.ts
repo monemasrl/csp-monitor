@@ -21,6 +21,7 @@ export type CspEvent = {
 };
 
 const MAX = 200;
+const URL_MAX = 2048;
 export const EXTENSION_SCHEMES = [
   'chrome-extension',
   'moz-extension',
@@ -70,7 +71,7 @@ function classify(
 }
 
 /** Never throws; null when the document URL or the directive is missing/invalid. */
-export function toCspEvent(raw: RawReport, siteDomains: string[]): CspEvent | null {
+export function toCspEvent(raw: RawReport, siteDomains: string[], requestUa?: string): CspEvent | null {
   try {
     const body = raw.body ?? {};
     const directive = directiveOf(body);
@@ -83,23 +84,23 @@ export function toCspEvent(raw: RawReport, siteDomains: string[]): CspEvent | nu
     } catch {
       return null;
     }
-    const documentUrl = stripUrl(documentURL);
+    const documentUrl = stripUrl(documentURL).slice(0, URL_MAX);
     if (!host || !documentUrl) return null;
 
     const { category, origin, blockedRaw } = classify(str(body.blockedURL), siteDomains);
     const sourceFile = str(body.sourceFile);
     const line = typeof body.lineNumber === 'number' && Number.isFinite(body.lineNumber) ? body.lineNumber : null;
-    const ua = reduceUa(raw.userAgent);
+    const ua = reduceUa(raw.userAgent ?? requestUa);
 
     return {
       directive,
       origin,
       category,
-      page: pathOf(documentURL),
+      page: pathOf(documentURL).slice(0, URL_MAX),
       documentUrl,
       documentHost: host,
       blockedRaw,
-      sourceFile: sourceFile ? stripUrl(sourceFile) : '',
+      sourceFile: sourceFile ? stripUrl(sourceFile).slice(0, URL_MAX) : '',
       sample: cut(str(body.sample)),
       line,
       disposition: body.disposition === 'enforce' ? 'enforce' : 'report',

@@ -107,4 +107,38 @@ describe('ingest', () => {
       }
     }
   });
+  it('forged noise reports over the limit do not drain the unseen budget (I1)', () => {
+    deps.db.prepare('UPDATE sites SET rate_per_min = 1 WHERE id = ?').run(site.id);
+    site = { ...site, ratePerMin: 1 };
+    ingest(deps, site.key, CT, legacy({ blockedURL: 'https://seed.example/x.js' }), T); // consumes the in-limit slot
+    for (let i = 0; i < 500; i++) {
+      ingest(deps, site.key, CT, legacy({ doc: 'https://foreign.test/p', blockedURL: `https://h${i}.junk/x.js` }), T);
+    }
+    alerts.length = 0;
+    ingest(deps, site.key, CT, legacy({ blockedURL: 'https://skimmer.evil/x.js' }), T);
+    expect(deps.db.prepare("SELECT COUNT(*) n FROM origins WHERE origin = 'https://skimmer.evil'").get()).toEqual({ n: 1 });
+    expect(alerts).toHaveLength(1);
+  });
+  it('legacy reports use the request user agent, reduced (I3)', () => {
+    ingest(deps, site.key, CT, legacy({ blockedURL: 'https://ff.example/x.js' }), T,
+      'Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0');
+    expect(deps.db.prepare('SELECT ua FROM samples').get()).toEqual({ ua: 'Firefox 121' });
+    expect(JSON.stringify(deps.db.prepare('SELECT * FROM samples').all())).not.toContain('Gecko');
+  });
+  it('a bot request user agent is classified as bot noise (I3)', () => {
+    ingest(deps, site.key, CT, legacy({ blockedURL: 'https://bot.example/x.js' }), T,
+      'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)');
+    expect(countNoise(deps.db, site.id, 'bot')).toBe(1);
+    expect(deps.db.prepare('SELECT COUNT(*) n FROM origins').get()).toEqual({ n: 0 });
+  });
+  it('caps documentUrl, page and sourceFile at 2048 chars (M6)', () => {
+    const long = 'a'.repeat(5000);
+    ingest(deps, site.key, 'application/reports+json', JSON.stringify([{ type: 'csp-violation', body: {
+      documentURL: `https://www.example.it/${long}`, effectiveDirective: 'script-src',
+      blockedURL: 'https://long.example/x.js', sourceFile: `https://www.example.it/${long}.js`,
+    } }]), T);
+    const s = deps.db.prepare('SELECT page, source_file FROM samples').get() as { page: string; source_file: string };
+    expect(s.page.length).toBeLessThanOrEqual(2048);
+    expect(s.source_file.length).toBeLessThanOrEqual(2048);
+  });
 });
