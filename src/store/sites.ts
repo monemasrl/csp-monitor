@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { Db } from '../db/db.js';
+import { HEADER_FEATURES, type HeaderFeature } from '../headers.js';
 
 export type Site = {
   id: number;
@@ -14,12 +15,14 @@ export type Site = {
   lastReportAt: number | null;
   /** Path prefixes (e.g. /checkout) whose alerts are not delayed. */
   sensitivePaths: string[];
+  /** Optional report types the owner enabled; always includes 'csp'. */
+  enabledHeaders: HeaderFeature[];
 };
 
 type Row = {
   id: number; name: string; key: string; domains: string; created_at: number; learning_until: number;
   learning_summary_sent: number; rate_per_min: number; rate_per_day: number; last_report_at: number | null;
-  sensitive_paths: string;
+  sensitive_paths: string; enabled_headers: string;
 };
 
 const LEARNING_MS = 7 * 24 * 3600 * 1000;
@@ -35,6 +38,16 @@ function parseList(text: string): string[] {
   }
 }
 
+function parseFeatures(text: string): HeaderFeature[] {
+  try {
+    const v: unknown = JSON.parse(text);
+    if (!Array.isArray(v)) return ['csp'];
+    return v.filter((x): x is HeaderFeature => (HEADER_FEATURES as readonly unknown[]).includes(x));
+  } catch {
+    return ['csp'];
+  }
+}
+
 function toSite(r: Row): Site {
   return {
     id: r.id, name: r.name, key: r.key, domains: JSON.parse(r.domains) as string[],
@@ -42,6 +55,7 @@ function toSite(r: Row): Site {
     learningSummarySent: r.learning_summary_sent !== 0,
     ratePerMin: r.rate_per_min, ratePerDay: r.rate_per_day, lastReportAt: r.last_report_at,
     sensitivePaths: parseList(r.sensitive_paths),
+    enabledHeaders: parseFeatures(r.enabled_headers),
   };
 }
 
@@ -132,4 +146,11 @@ export function deleteSite(db: Db, id: number): void {
 
 export function touchSite(db: Db, id: number, now: number): void {
   db.prepare('UPDATE sites SET last_report_at = ? WHERE id = ?').run(now, id);
+}
+
+/** Stores the enabled header features (deduplicated, valid only, 'csp' always first). */
+export function setEnabledHeaders(db: Db, siteId: number, features: HeaderFeature[]): void {
+  const valid = new Set<HeaderFeature>(['csp']);
+  for (const f of features) if ((HEADER_FEATURES as readonly unknown[]).includes(f)) valid.add(f);
+  db.prepare('UPDATE sites SET enabled_headers = ? WHERE id = ?').run(JSON.stringify([...valid]), siteId);
 }

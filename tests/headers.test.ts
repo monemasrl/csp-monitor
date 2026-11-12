@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { strictHeaders, suggestedHeaders } from '../src/headers.js';
+import { strictHeaders, suggestedHeaders, buildHeaderSet, type HeaderFeature } from '../src/headers.js';
 
 const expected = (host: string, key: string) =>
   `Reporting-Endpoints: csp="https://${host}/r/${key}"\n` +
@@ -41,5 +41,58 @@ describe('suggestedHeaders', () => {
     const out = suggestedHeaders(base, 'k', [{ directive: 'object-src', pattern: 'https://o.it' }]);
     expect(out).toContain('object-src https://o.it;');
     expect(out).not.toContain("object-src 'none'");
+  });
+});
+
+describe('buildHeaderSet', () => {
+  const base = 'https://m.example.it';
+  const ep = 'https://m.example.it/r/k';
+  const one = (f: HeaderFeature, approved: { directive: string; pattern: string }[] = []) =>
+    buildHeaderSet(base, 'k', [f], approved).slice(1).map((h) => `${h.name}: ${h.value}`);
+
+  it('always starts with Reporting-Endpoints (csp and default)', () => {
+    const [first] = buildHeaderSet(base, 'k', [], []);
+    expect(first.name).toBe('Reporting-Endpoints');
+    expect(first.value).toBe(`csp="${ep}", default="${ep}"`);
+    expect(first.note).toMatch(/\S/);
+  });
+  it('csp is only the strict Report-Only policy, equal to strictHeaders', () => {
+    const h = buildHeaderSet(base, 'k', ['csp'], []);
+    expect(h).toHaveLength(2);
+    expect(`${h[0].name}: ${h[0].value}\n${h[1].name}: ${h[1].value}`.replace('csp="https://m.example.it/r/k", default="https://m.example.it/r/k"', 'csp="https://m.example.it/r/k"'))
+      .toBe(strictHeaders(base, 'k'));
+  });
+  it('csp uses the suggested policy when approvals exist', () => {
+    const approved = [{ directive: 'img-src', pattern: 'https://cdn.example' }];
+    expect(one('csp', approved)[0]).toBe(suggestedHeaders(base, 'k', approved).split('\n')[1]);
+  });
+  it('csp-hash adds report-sha256 to script-src', () => {
+    const v = buildHeaderSet(base, 'k', ['csp', 'csp-hash'], []).find((h) => h.name === 'Content-Security-Policy-Report-Only')!.value;
+    expect(v).toContain("script-src 'self' 'report-sha256';");
+  });
+  it('csp-hash alone adds nothing without csp', () => {
+    expect(buildHeaderSet(base, 'k', ['csp-hash'], [])).toHaveLength(1);
+  });
+  it('nel', () => {
+    expect(one('nel')).toEqual([
+      `Report-To: {"group":"nel","max_age":2592000,"endpoints":[{"url":"${ep}"}]}`,
+      'NEL: {"report_to":"nel","max_age":2592000,"failure_fraction":1.0,"success_fraction":0.01}',
+    ]);
+  });
+  it('permissions', () => {
+    expect(one('permissions')).toEqual(['Permissions-Policy-Report-Only: camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), bluetooth=(), display-capture=()']);
+  });
+  it('coop', () => { expect(one('coop')).toEqual(['Cross-Origin-Opener-Policy-Report-Only: same-origin; report-to="default"']); });
+  it('coep', () => { expect(one('coep')).toEqual(['Cross-Origin-Embedder-Policy-Report-Only: require-corp; report-to="default"']); });
+  it('document', () => { expect(one('document')).toEqual(['Document-Policy-Report-Only: sync-xhr=?0']); });
+  it('integrity', () => { expect(one('integrity')).toEqual(['Integrity-Policy-Report-Only: blocked-destinations=(script), endpoints=(default)']); });
+  it('connection is marked experimental', () => {
+    const h = buildHeaderSet(base, 'k', ['connection'], []).slice(1);
+    expect(h.map((x) => `${x.name}: ${x.value}`)).toEqual(['Connection-Allowlist-Report-Only: (response-origin); report-to=default']);
+    expect(h[0].note).toMatch(/[Ss]perimentale/);
+  });
+  it('every entry has an Italian note', () => {
+    const all: HeaderFeature[] = ['csp', 'csp-hash', 'nel', 'permissions', 'coop', 'coep', 'document', 'integrity', 'connection'];
+    for (const h of buildHeaderSet(base, 'k', all, [])) expect(h.note.length).toBeGreaterThan(10);
   });
 });

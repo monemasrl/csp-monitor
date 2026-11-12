@@ -16,9 +16,12 @@ function endpoint(baseUrl: string, key: string): string {
   return `${new URL(baseUrl).origin}/r/${key}`;
 }
 
+function policy(url: string, directives: [string, string[]][]): string {
+  return [...directives.map(([d, s]) => `${d} ${s.join(' ')}`), `report-uri ${url}`, 'report-to csp'].join('; ');
+}
+
 function build(url: string, directives: [string, string[]][]): string {
-  const csp = [...directives.map(([d, s]) => `${d} ${s.join(' ')}`), `report-uri ${url}`, 'report-to csp'].join('; ');
-  return `Reporting-Endpoints: csp="${url}"\nContent-Security-Policy-Report-Only: ${csp}`;
+  return `Reporting-Endpoints: csp="${url}"\nContent-Security-Policy-Report-Only: ${policy(url, directives)}`;
 }
 
 export function strictHeaders(baseUrl: string, key: string): string {
@@ -34,6 +37,10 @@ export function strictHeaders(baseUrl: string, key: string): string {
 export function suggestedHeaders(
   baseUrl: string, key: string, approved: { directive: string; pattern: string }[],
 ): string {
+  return build(endpoint(baseUrl, key), suggestedDirectives(approved));
+}
+
+function suggestedDirectives(approved: { directive: string; pattern: string }[]): [string, string[]][] {
   const byDirective = new Map<string, Set<string>>();
   for (const { directive, pattern } of approved) {
     if (!byDirective.has(directive)) byDirective.set(directive, new Set());
@@ -52,5 +59,86 @@ export function suggestedHeaders(
     if (known.has(d)) continue;
     result.push([d, ["'self'", ...extra(d, ["'self'"])]]);
   }
-  return build(endpoint(baseUrl, key), result);
+  return result;
+}
+
+export const HEADER_FEATURES = ['csp', 'csp-hash', 'nel', 'permissions', 'coop', 'coep', 'document', 'integrity', 'connection'] as const;
+export type HeaderFeature = (typeof HEADER_FEATURES)[number];
+
+export type HeaderEntry = { name: string; value: string; note: string };
+
+/**
+ * Headers the site owner should add, one entry per header line, for the enabled features.
+ * Syntax checked against MDN / specs (see task-8 report); `default` is the implicit endpoint
+ * used by report-to-less headers. Strings verified on Chrome 157 / Safari 27 where noted.
+ */
+export function buildHeaderSet(
+  baseUrl: string, key: string, enabled: HeaderFeature[], approved: { directive: string; pattern: string }[],
+): HeaderEntry[] {
+  const ep = endpoint(baseUrl, key);
+  const on = new Set(enabled);
+  const out: HeaderEntry[] = [{
+    name: 'Reporting-Endpoints', value: `csp="${ep}", default="${ep}"`,
+    note: 'Definisce dove i browser inviano i report: va sempre inviato insieme agli altri header.',
+  }];
+  if (on.has('csp')) {
+    const directives = suggestedDirectives(approved).map(([d, s]): [string, string[]] =>
+      // csp-hash: 'report-sha256' (CSP3 spec, w3c.github.io/webappsec-csp) makes Chrome send csp-hash reports
+      d === 'script-src' && on.has('csp-hash') ? [d, [...s, "'report-sha256'"]] : [d, s]);
+    out.push({
+      name: 'Content-Security-Policy-Report-Only', value: policy(ep, directives),
+      note: 'Policy CSP in sola segnalazione: nessun blocco, i browser moderni la supportano tutti.',
+    });
+  }
+  if (on.has('nel')) {
+    // Legacy Report-To still needed for NEL in Chrome (MDN NEL page).
+    out.push({
+      name: 'Report-To', value: `{"group":"nel","max_age":2592000,"endpoints":[{"url":"${ep}"}]}`,
+      note: 'Gruppo di destinazione per NEL: oggi solo Chrome ed Edge lo usano.',
+    }, {
+      name: 'NEL', value: '{"report_to":"nel","max_age":2592000,"failure_fraction":1.0,"success_fraction":0.01}',
+      note: 'Errori di rete visti dai visitatori: oggi solo Chrome ed Edge; campiona l\'1% dei successi.',
+    });
+  }
+  if (on.has('permissions')) {
+    // No report-to: MDN documents per-member `;report-to=name`, omitted => `default` endpoint (verified on Chrome).
+    out.push({
+      name: 'Permissions-Policy-Report-Only',
+      value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), bluetooth=(), display-capture=()',
+      note: 'Segnala l\'uso di funzioni sensibili: oggi solo Chrome ed Edge.',
+    });
+  }
+  if (on.has('coop')) {
+    out.push({
+      name: 'Cross-Origin-Opener-Policy-Report-Only', value: 'same-origin; report-to="default"',
+      note: 'Mostra cosa si romperebbe isolando la finestra: Chrome, Edge e Firefox.',
+    });
+  }
+  if (on.has('coep')) {
+    out.push({
+      name: 'Cross-Origin-Embedder-Policy-Report-Only', value: 'require-corp; report-to="default"',
+      note: 'Segnala le risorse esterne senza CORP: Chrome, Edge e Safari; attenzione al rumore dei servizi di terze parti.',
+    });
+  }
+  if (on.has('document')) {
+    // oversized-images/unsized-media are not shipped; sync-xhr=?0 is (verified on the test site, Chrome).
+    out.push({
+      name: 'Document-Policy-Report-Only', value: 'sync-xhr=?0',
+      note: 'Segnala le chiamate XHR sincrone: oggi solo Chrome ed Edge.',
+    });
+  }
+  if (on.has('integrity')) {
+    out.push({
+      name: 'Integrity-Policy-Report-Only', value: 'blocked-destinations=(script), endpoints=(default)',
+      note: 'Segnala gli script senza attributo integrity: Chrome ed Edge; i copioni di terze parti daranno molti risultati.',
+    });
+  }
+  if (on.has('connection')) {
+    // WICG connection-allowlists explainer; draft, syntax may change.
+    out.push({
+      name: 'Connection-Allowlist-Report-Only', value: '(response-origin); report-to=default',
+      note: 'Sperimentale: il formato può cambiare e pochi browser lo supportano.',
+    });
+  }
+  return out;
 }
