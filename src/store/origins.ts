@@ -13,14 +13,14 @@ export type RecordResult = {
 };
 
 const BODY_MAX = 8192;
-const URL_SCHEME = /^(https?|wss?):\/\//i;
+const URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
 
 /** Approval with site_id = siteId or NULL (global), same directive, whose pattern matches the origin. */
 export function isCovered(db: Db, siteId: number, origin: string, directive: string): boolean {
   const rows = db
     .prepare('SELECT pattern FROM approvals WHERE (site_id = ? OR site_id IS NULL) AND directive = ?')
     .all(siteId, directive) as { pattern: string }[];
-  return rows.some(r => matchesPattern(r.pattern, origin));
+  return rows.some(r => r.pattern === origin || matchesPattern(r.pattern, origin));
 }
 
 /** stripUrl, or for unparseable URLs a manual cut: no query, fragment or userinfo. */
@@ -135,7 +135,7 @@ export function addApprovalPattern(
     ) as { id: number; origin: string; directive: string }[];
     const upd = db.prepare("UPDATE origins SET status = 'approved' WHERE id = ?");
     for (const r of rows) {
-      if (directives.includes(r.directive) && matchesPattern(pattern, r.origin)) upd.run(r.id);
+      if (directives.includes(r.directive) && (pattern === r.origin || matchesPattern(pattern, r.origin))) upd.run(r.id);
     }
   })();
 }

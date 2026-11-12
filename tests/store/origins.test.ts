@@ -73,6 +73,24 @@ describe('recordCspEvent', () => {
     expect(JSON.parse(body)['csp-report']).toMatchObject({ 'blocked-uri': 'https://x.com/a.js', sample: 'inline', blockedURL: 'eval', n: 3 });
   });
 
+  it('cleans any scheme:// string, not only web schemes (M1)', () => {
+    const { db, site } = setup();
+    recordCspEvent(db, site, ev(), T0, { a: 'ftp://user:pw@m.xyz/a?tok=1', b: ['gopher://u:p@h/x#f'] });
+    const body = (db.prepare('SELECT body FROM samples').get() as { body: string }).body;
+    for (const bad of ['user', 'pw', 'tok', '?', '#', 'u:p']) expect(body).not.toContain(bad);
+    expect(JSON.parse(body).a).toBe('ftp://m.xyz/a');
+  });
+
+  it('a global data: approval covers data: rows of other sites (T11)', () => {
+    const { db, site, other } = setup();
+    const e = ev({ directive: 'img-src', origin: 'data:', category: 'data' });
+    recordCspEvent(db, site, e, T0);
+    addApprovalPattern(db, null, 'data:', ['img-src'], T0);
+    expect(db.prepare("SELECT status FROM origins WHERE site_id = ?").get(site.id)).toEqual({ status: 'approved' });
+    expect(isCovered(db, other.id, 'data:', 'img-src')).toBe(true);
+    expect(recordCspEvent(db, other, e, T1).status).toBe('approved');
+  });
+
   it('cuts query/fragment/userinfo from unparseable scheme-prefixed strings', () => {
     const { db, site } = setup();
     recordCspEvent(db, site, ev(), T0, {

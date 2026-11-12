@@ -70,6 +70,16 @@ describe('pruneData', () => {
 });
 
 describe('backupDb', () => {
+  it('leaves no temp file after success, and a failed backup keeps the previous same-day file (T12)', () => {
+    const db = seed();
+    const p = backupDb(db, dir, NOW);
+    expect(readdirSync(dir).filter(f => f.endsWith('.tmp'))).toEqual([]);
+    const broken = { prepare: () => ({ run: () => { throw new Error('disk full'); } }) } as unknown as typeof db;
+    expect(() => backupDb(broken, dir, NOW)).toThrow('disk full');
+    expect(existsSync(p)).toBe(true);
+    expect(openDb(p).prepare('SELECT COUNT(*) c FROM sites').get()).toEqual({ c: 1 });
+    expect(readdirSync(dir).filter(f => f.endsWith('.tmp'))).toEqual([]);
+  });
   it('creates a dir, a openable backup with the sites, and replaces the same-day file', () => {
     const db = seed();
     const target = join(dir, 'sub', 'backups');

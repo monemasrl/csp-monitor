@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, rmSync, existsSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Db } from '../db/db.js';
 import { utcDay } from '../time.js';
@@ -33,8 +33,15 @@ export function pruneData(db: Db, now: number): void {
 export function backupDb(db: Db, dir: string, now: number): string {
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `csp-monitor-${utcDay(now)}.sqlite`);
-  if (existsSync(file)) rmSync(file);
-  db.prepare('VACUUM INTO ?').run(file);
+  const tmp = join(dir, `.csp-monitor-${utcDay(now)}.sqlite.tmp`);
+  rmSync(tmp, { force: true });
+  try {
+    db.prepare('VACUUM INTO ?').run(tmp);
+    renameSync(tmp, file);
+  } catch (e) {
+    rmSync(tmp, { force: true });
+    throw e;
+  }
   const backups = readdirSync(dir).filter(f => BACKUP_RE.test(f)).sort();
   for (const old of backups.slice(0, Math.max(0, backups.length - KEEP_BACKUPS))) rmSync(join(dir, old), { force: true });
   return file;
