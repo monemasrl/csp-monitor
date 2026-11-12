@@ -218,11 +218,10 @@ export const coopHandler = simple('coop', body => {
 }, (_c, e, r) => (notApproved(r) && e.disposition === 'enforce' ? { kind: 'coop-blocked', originId: r.originId } : null));
 
 export const coepHandler = simple('coep', (body) => {
-  const blocked = pick(body, 'blockedURL', 'url');
-  if (!blocked) return null;
-  const res = resource(blocked);
+  // Safari leaves blockedURL empty for iframes and navigations: keep the report under '—'.
+  const res = resource(pick(body, 'blockedURL', 'url'));
   return {
-    keyA: pick(body, 'destination') || 'unknown', keyB: res.url || res.origin,
+    keyA: pick(body, 'destination') || 'unknown', keyB: res.url || res.origin || '—',
     resourceUrl: res.url, noiseOrigin: res.origin, category: 'external',
   };
 }, (_c, e, r) => (notApproved(r) && e.disposition === 'enforce' ? { kind: 'coep-blocked', originId: r.originId } : null));

@@ -159,6 +159,11 @@ describe('coep', () => {
     run(fixture('coep'));
     expect(run(fixture('coep')).alert).toBeNull();
   });
+  // Safari 27 sends COEP reports for iframes and navigations with an empty blockedURL and sometimes no destination.
+  it('keeps Safari reports with an empty blocked URL, keyed by an em dash', () => {
+    expect(run(withBody(fixture('coep'), { blockedURL: '', type: 'corp', destination: 'iframe' })).keys).toEqual(['iframe', '—']);
+    expect(run(withBody(fixture('coep'), { blockedURL: '', type: 'navigation', destination: undefined })).keys).toEqual(['unknown', '—']);
+  });
 });
 
 describe('common behaviour', () => {

@@ -39,7 +39,11 @@ export function ingest(deps: Deps, key: string, contentType: string | undefined,
       discard('invalid', text);
       return;
     }
-    const extra = (deps.db.prepare('SELECT pattern FROM noise_patterns').all() as { pattern: string }[]).map(r => r.pattern);
+    // The collector's own origin is noise: browsers (Safari) report the report uploads themselves.
+    const extra = [
+      ...(deps.db.prepare('SELECT pattern FROM noise_patterns').all() as { pattern: string }[]).map(r => r.pattern),
+      new URL(deps.config.baseUrl).origin,
+    ];
     for (const raw of reports) {
       try {
         const handler = HANDLERS.get(raw.type);
