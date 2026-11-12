@@ -17,6 +17,8 @@ L'obiettivo è la **sorveglianza di sicurezza**, non portare i siti a una CSP bl
 3. **Alert via email** ad Andrea la prima volta che su un sito compare un'origine esterna mai vista prima.
 4. Dashboard per consultare siti, origini, conteggi e trend, e per approvare un'origine (per un sito o per tutti) così da non ricevere più alert su di essa.
 5. Filtrare il rumore (estensioni del browser, antivirus, traduttori, bot) in modo che non generi alert.
+6. **Verifica della configurazione:** controllare ogni giorno che gli header dei siti mandino davvero i report al servizio, e avvisare quando la configurazione si rompe. *(richiesto da Andrea)*
+7. **Analisi della policy:** dare un punteggio alla CSP che il server manda, con i problemi e le correzioni, e avvisare quando il punteggio di sicurezza scende. *(richiesto da Andrea)*
 
 ## Non obiettivi (per ora)
 
@@ -123,11 +125,52 @@ Una rotta `/health` per un controllo di disponibilità esterno (è un sistema di
 
 Interfaccia semplice, renderizzata lato server dall'app; nessuna necessità di un framework frontend pesante.
 
-### 7. Conservazione dei dati
+### 7. Verifica della configurazione *(richiesta da Andrea; dettagli scelti da Claude)*
+
+Ispirata al "Reporting API checker" di CentralCSP, ma solo per uso interno (nessuno strumento pubblico).
+
+- **Quando:** automatica una volta al giorno per ogni sito, più un pulsante "Verifica ora" nella pagina del sito.
+- **Cosa scarica:** solo gli header di risposta di un elenco di pagine per sito (di default la home; Andrea ne aggiunge altre, es. `/admin/`, `/checkout`), seguendo i redirect, con uno user agent riconoscibile del servizio. Nessun JavaScript eseguito.
+- **Cosa ricava, per pagina:**
+  - endpoint dichiarati in `Reporting-Endpoints` e `Report-To`: nome, URL, header di provenienza, se l'URL è del servizio, quali funzioni lo usano;
+  - funzioni che producono report e dove li mandano: CSP (bloccante e Report-Only, via `report-to` e `report-uri`), Permissions-Policy, COOP, COEP, Document-Policy, Integrity-Policy, NEL, più crash/deprecazioni/interventi che usano l'endpoint `default`;
+  - problemi con gravità: `report-to` verso un nome non dichiarato (report persi), endpoint in `http://`, pagina non in HTTPS, header di report assente, report diretti a un URL che non è del servizio, endpoint dichiarati e inutilizzati, `report-uri` senza `report-to`, NEL senza `Report-To`.
+- **Storico:** si salva l'esito di ogni verifica (header grezzi compresi) per confrontarlo con il precedente.
+- **Alert:** email quando una verifica automatica trova un problema **grave che nella verifica precedente non c'era**. I problemi di qualità restano solo in dashboard. Errori di rete o risposte bloccate da un firewall vengono mostrati come "verifica non riuscita" e avvisano solo dopo 3 fallimenti consecutivi.
+
+### 8. Analisi della policy *(richiesta da Andrea; dettagli scelti da Claude)*
+
+Ispirata al "CSP scanner" di CentralCSP. Usa gli header già scaricati dalla verifica, quindi gira con la stessa frequenza.
+
+- Analizza separatamente la policy **bloccante** e quella **Report-Only**. Se la bloccante manca, il punteggio di sicurezza è 0 e la pagina lo spiega.
+- **Punteggio 0–100** complessivo, più due sotto-punteggi: sicurezza e qualità.
+- **Controlli di sicurezza:** `'unsafe-inline'`, `'unsafe-eval'`, `'unsafe-hashes'`; jolly e schemi troppo larghi (`*`, `https:`, `data:` negli script); host consentiti con bypass noti (JSONP, gadget: partire dalle liste del CSP Evaluator di Google, open source); nonce identico tra due risposte; nonce/hash scritti male o in direttive che li ignorano; `object-src`, `base-uri`, `frame-ancestors` mancanti e coperture reali di `default-src`.
+- **Controlli di qualità:** direttive deprecate (`block-all-mixed-content`, `plugin-types`, …), duplicate, valori sconosciuti, separatori ignorati.
+- Ogni problema ha gravità (critico, alto, medio, basso), spiegazione e correzione.
+- **Storico del punteggio** per sito; il punteggio compare anche nella panoramica.
+- **Alert:** email quando il punteggio di sicurezza scende rispetto alla verifica precedente, indicando il problema nuovo che lo ha causato. Un punteggio basso ma stabile non genera email.
+- Il calcolo esatto dei pesi è lasciato a chi costruisce, purché sia deterministico e documentato.
+
+### 9. Conservazione dei dati
 
 - Contatori e tabella origini: per sempre (sono piccoli).
 - Contatori aggregati per giorno `(sito, direttiva, origine, giorno)`: 90 giorni.
 - Report grezzi campione: solo gli ultimi N per origine, più quelli degli ultimi 7 giorni, poi cancellati da un cron giornaliero.
+- Esiti delle verifiche con header grezzi: 90 giorni; punteggi giornalieri: per sempre.
+
+## Mockup
+
+Mockup interattivo della dashboard (privato): https://claude.ai/artifact/6Fh6uA4XHSymiLm7rvLdhp — panoramica, riepilogo sito, dettaglio origine, verifica configurazione, analisi della policy e una pagina per ciascuno dei 12 tipi di report. È il riferimento per l'interfaccia; i dati mostrati sono inventati.
+
+## Decisione aperta: tipi di report nella prima versione
+
+Il mockup mostra 12 tipi di report raggruppati in tre famiglie. Andrea deve ancora decidere quali entrano nella prima versione; finché non decide, la prima versione copre solo `csp-violation` (il resto del documento è scritto su quello).
+
+- **Segnali di attacco:** `csp-violation`, `csp-hash` (inventario hash degli script: oggi è tra i non obiettivi), `integrity-violation`, `connection-allowlist` (proposta sperimentale).
+- **Guasti che il server non vede:** `network-error` (NEL, richiede anche `Report-To`), `crash`, `deprecation`, `intervention`.
+- **Igiene delle policy:** `permissions-policy-violation`, `document-policy-violation`, `coop`, `coep`.
+
+Quasi tutti, tranne `csp-violation` e in parte `coop`/`coep`, arrivano oggi solo da browser Chromium. L'endpoint di ingestione accetta comunque qualsiasi tipo nel formato `application/reports+json`, così aggiungerli dopo riguarda solo normalizzazione, regole di alert e pagine.
 
 ## Lasciato a chi costruisce
 
