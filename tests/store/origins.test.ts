@@ -83,6 +83,16 @@ describe('recordCspEvent', () => {
     expect(JSON.parse(body)).toEqual({ a: 'https://a b/', b: 'https://[::1/', c: 'https://exa mple.com/x', d: ['wss://h ost/p'], e: 'https://bad host/', f: 'https://bad host/' });
   });
 
+  it('drops userinfo containing line terminators from unparseable URLs', () => {
+    const { db, site } = setup();
+    recordCspEvent(db, site, ev(), T0, {
+      a: 'https://u:p\nw@bad host/?t=1', b: 'https://u:p\rw@bad host/', c: 'https://u:p\u2028w@bad host/', d: 'https://u:p\u2029w@bad host/',
+    });
+    const body = (db.prepare('SELECT body FROM samples').get() as { body: string }).body;
+    expect(body).not.toMatch(/p.?w|u:p/);
+    expect(JSON.parse(body)).toEqual({ a: 'https://bad host/', b: 'https://bad host/', c: 'https://bad host/', d: 'https://bad host/' });
+  });
+
   it('falls back to the event as body, and truncates it to 8192 chars', () => {
     const { db, site } = setup();
     recordCspEvent(db, site, ev(), T0);
