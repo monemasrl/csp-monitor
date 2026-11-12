@@ -62,4 +62,10 @@ export class KnownCache {
   add(siteId: number, directive: string, origin: string): void {
     this.set.add(KnownCache.k(siteId, directive, origin));
   }
+
+  /** Drops every entry of a site (after its data is cleared or the site is removed). */
+  forgetSite(siteId: number): void {
+    const prefix = `[${siteId},`;
+    for (const k of this.set) if (k.startsWith(prefix)) this.set.delete(k);
+  }
 }

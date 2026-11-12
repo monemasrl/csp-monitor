@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Child } from 'hono/jsx';
+import { STYLE_HREF } from '../assets.js';
 import type { NavData } from '../queries.js';
 
 export type Active =
@@ -74,7 +75,7 @@ export function Layout(props: { title: string; nav: NavData; active: Active; chi
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="referrer" content="same-origin" />
         <title>{`${props.title} - CSP Monitor`}</title>
-        <link rel="stylesheet" href="/static/style.css" />
+        <link rel="stylesheet" href={STYLE_HREF} />
       </head>
       <body>
         <div class="shell">

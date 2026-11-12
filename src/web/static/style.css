@@ -112,3 +112,11 @@ body > main label{display:flex;flex-direction:column;gap:6px;font-size:13px}
   .grid4{grid-template-columns:minmax(0,1fr)}
   .cards{grid-template-columns:minmax(0,1fr)}
 }
+.card.danger{border-color:#F0C6BD}
+.card.danger h2{color:#A12A17;margin-bottom:4px}
+.danger-row{display:flex;gap:16px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;padding:12px 0;border-top:1px solid #F3DAD4}
+.danger-row:first-of-type{border-top:0}
+.danger-row h3{font-size:14px;margin:0 0 2px}
+.danger-row p{margin:0;font-size:13px;max-width:52ch}
+.danger-confirm{display:flex;flex-direction:column;gap:6px;min-width:240px}
+.danger-confirm label{font-size:12px}

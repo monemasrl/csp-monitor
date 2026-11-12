@@ -37,6 +37,33 @@ export function StartLearning(props: { site: Site; learning: boolean }) {
   );
 }
 
+/** Irreversible actions; each one asks to type the site name. */
+export function DangerZone(props: { site: Site }) {
+  const { site } = props;
+  const Action = (p: { action: string; title: string; text: string; button: string; id: string }) => (
+    <form method="post" action={`/sites/${site.id}/${p.action}`} class="danger-row">
+      <div>
+        <h3>{p.title}</h3>
+        <p class="muted">{p.text}</p>
+      </div>
+      <div class="danger-confirm">
+        <label for={p.id}>Scrivi <b>{site.name}</b> per confermare</label>
+        <input id={p.id} name="confirm" autocomplete="off" spellcheck={false} required />
+        <button type="submit" class="dng">{p.button}</button>
+      </div>
+    </form>
+  );
+  return (
+    <section class="card danger">
+      <h2>Zona pericolosa</h2>
+      <Action action="clear-data" id="confirm-clear" title="Cancella tutti i dati" button="Cancella i dati"
+        text="Elimina origini, campioni, conteggi, rumore e alert in coda di questo sito. Restano il sito, la chiave dell'endpoint, le impostazioni e le approvazioni. Non si può annullare." />
+      <Action action="delete" id="confirm-delete" title="Rimuovi il sito" button="Rimuovi il sito"
+        text="Elimina il sito con tutti i suoi dati e le sue approvazioni. L'endpoint smette di accettare report. Non si può annullare." />
+    </section>
+  );
+}
+
 export function SiteSettings(props: {
   nav: NavData; site: Site; endpoint: string; now: number; form?: SiteForm; errors?: string[];
 }) {
@@ -73,6 +100,7 @@ export function SiteSettings(props: {
         <EndLearning site={site} now={now} />
         <StartLearning site={site} learning={learning} />
       </section>
+      <DangerZone site={site} />
     </Layout>
   );
 }
