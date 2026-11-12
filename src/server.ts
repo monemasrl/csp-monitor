@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { EmailChannel } from './alerts/channels.js';
 import { enqueueAlert } from './alerts/queue.js';
+import { backupDb, pruneData } from './jobs/maintenance.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { loadConfig } from './config.js';
 import { openDb } from './db/db.js';
@@ -22,7 +23,11 @@ const deps = {
   onAlert: (s: number, o: number, n: number) => enqueueAlert(db, s, o, n),
 };
 const app = createApp(deps);
-const stopScheduler = startScheduler(deps);
+const runMaintenance = async (_d: unknown, now: number): Promise<void> => {
+  try { pruneData(db, now); } catch (e) { console.error('maintenance: prune failed', e instanceof Error ? e.name : 'error'); }
+  try { backupDb(db, join(config.dataDir, 'backups'), now); } catch (e) { console.error('maintenance: backup failed', e instanceof Error ? e.name : 'error'); }
+};
+const stopScheduler = startScheduler(deps, { runMaintenance });
 
 const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
   console.log(`csp-monitor listening on :${info.port}`);
