@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ALERT_KINDS } from '../src/alerts/kinds.js';
 import type { AlertChannel, AlertMessage } from '../src/alerts/channels.js';
-import { enqueue, runDueAlerts } from '../src/alerts/queue.js';
+import { runDueAlerts } from '../src/alerts/queue.js';
 import { runReminders } from '../src/ingest/handlers/deprecation.js';
 import { NOW } from './helpers.js';
 import { dash } from './web/dash.js';
@@ -17,8 +17,6 @@ describe('end to end: report types', () => {
     const sent: AlertMessage[] = [];
     const channel: AlertChannel = { name: 'fake', send: async (m) => { sent.push(m); } };
     const { deps, db, app, get, post } = dash({ now: () => t, channels: [channel] });
-    // the production wiring (src/server.ts): every alert kind is queued, not only new-origin
-    deps.onAlert = (s, req, n) => enqueue(db, s, req, n);
 
     expect((await post('/sites', { name: 'Gida', domains: 'www.gida-spa.it' })).status).toBe(303);
     const site = db.prepare('SELECT id, key FROM sites').get() as { id: number; key: string };

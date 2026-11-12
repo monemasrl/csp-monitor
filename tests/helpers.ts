@@ -1,4 +1,4 @@
-import { enqueueAlert } from '../src/alerts/queue.js';
+import { enqueue } from '../src/alerts/queue.js';
 import { openDb } from '../src/db/db.js';
 import type { Deps } from '../src/web/app.js';
 import { KnownCache, RateLimiter } from '../src/ingest/limits.js';
@@ -28,7 +28,7 @@ export function testDeps(overrides: Partial<Deps> = {}): Deps {
     channels: [],
     limiter: new RateLimiter(),
     known: new KnownCache(),
-    onAlert: (s, req, n) => { if (req.kind === 'new-origin') enqueueAlert(db, s, req.originId!, n); },
+    onAlert: (s, req, n) => enqueue(db, s, req, n), // same wiring as src/server.ts
     ...overrides,
   };
 }
