@@ -67,6 +67,14 @@ describe('ingest', () => {
     expect(countNoise(deps.db, site.id, 'extension')).toBe(1);
     expect(deps.db.prepare('SELECT COUNT(*) n FROM origins').get()).toEqual({ n: 0 });
   });
+  // Safari reports its own report uploads to the collector as COEP-blocked resources.
+  it('counts reports about the collector itself as known noise', () => {
+    const collector = `${new URL(deps.config.baseUrl).origin}/r/${site.key}`;
+    const coep = { type: 'coep', url: 'https://www.example.it/p', body: { disposition: 'reporting', type: 'corp', blockedURL: collector } };
+    ingest(deps, site.key, 'application/reports+json', JSON.stringify([coep]), T);
+    expect(countNoise(deps.db, site.id, 'known-noise')).toBe(1);
+    expect(deps.db.prepare('SELECT COUNT(*) n FROM origins').get()).toEqual({ n: 0 });
+  });
   it('uses custom noise_patterns', () => {
     deps.db.prepare("INSERT INTO noise_patterns (pattern, created_at) VALUES ('https://junk.example', 0)").run();
     ingest(deps, site.key, CT, legacy({ blockedURL: 'https://junk.example/a.js' }), T);
