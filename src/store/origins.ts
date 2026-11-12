@@ -15,6 +15,14 @@ export type RecordResult = {
 const BODY_MAX = 8192;
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
 
+/**
+ * Directive stored on an approval: the CSP directive for csp-violation rows, `<type>:<keyA>` for other report types,
+ * so an approval never crosses report types (csp-hash, coep and integrity all use keyA 'script').
+ */
+export function approvalDirective(reportType: string, keyA: string): string {
+  return reportType === 'csp-violation' ? keyA : `${reportType}:${keyA}`;
+}
+
 /** Approval with site_id = siteId or NULL (global), same directive, whose pattern matches the origin. */
 export function isCovered(db: Db, siteId: number, origin: string, directive: string): boolean {
   const rows = db
@@ -89,7 +97,7 @@ export function recordGeneric(
       result = { originId: existing.id, isNewRow: false, status: existing.status, previousLastSeen: existing.last_seen };
     } else {
       let status: RecordResult['status'] = 'new';
-      if (isCovered(db, site.id, keyB, keyA)) {
+      if (isCovered(db, site.id, keyB, approvalDirective(reportType, keyA))) {
         status = 'approved';
       } else if (db.prepare("SELECT 1 FROM origins WHERE site_id = ? AND report_type = ? AND origin = ? AND status = 'suspect' LIMIT 1").get(site.id, reportType, keyB)) {
         status = 'suspect';
@@ -202,14 +210,14 @@ export function markSuspect(db: Db, siteId: number, origin: string): void {
 }
 
 /**
- * Approval of a row of another report type: an exact approval (pattern = keyB, directive = keyA), and every row
+ * Approval of a row of another report type: an exact approval (pattern = keyB, directive = `<type>:<keyA>`), and every row
  * with the same type and keys on this site (all sites when global) becomes approved. CSP rows use approveOrigin.
  */
 export function approveTypeRow(
   db: Db, siteId: number, row: { reportType: string; directive: string; origin: string }, scope: 'site' | 'global', now: number,
 ): void {
   db.transaction(() => {
-    insertApproval(db, scope === 'global' ? null : siteId, row.origin, row.directive, now);
+    insertApproval(db, scope === 'global' ? null : siteId, row.origin, approvalDirective(row.reportType, row.directive), now);
     if (scope === 'global') {
       db.prepare("UPDATE origins SET status = 'approved' WHERE report_type = ? AND directive = ? AND origin = ?")
         .run(row.reportType, row.directive, row.origin);

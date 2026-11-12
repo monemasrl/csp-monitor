@@ -159,13 +159,14 @@ describe('type page actions', () => {
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toBe(back);
     expect(db.prepare('SELECT site_id, pattern, directive FROM approvals').all()).toEqual([
-      { site_id: site.id, pattern: 'https://maps.example', directive: 'camera' },
+      { site_id: site.id, pattern: 'https://maps.example', directive: 'permissions-policy-violation:camera' },
     ]);
     expect(db.prepare('SELECT site_id, directive, status FROM origins ORDER BY id').all()).toEqual([
       { site_id: site.id, directive: 'camera', status: 'approved' },
       { site_id: site.id, directive: 'geolocation', status: 'new' },
       { site_id: other.id, directive: 'camera', status: 'new' },
     ]);
+    expect(await (await get('/lists')).text()).toContain('<td class="mono">permissions-policy-violation:camera</td>');
     // global scope reaches the other site too
     expect((await post(`/sites/${site.id}/origins/${originId}/approve`, { scope: 'global' })).status).toBe(303);
     expect(db.prepare("SELECT COUNT(*) n FROM origins WHERE status = 'approved'").get()).toEqual({ n: 2 });

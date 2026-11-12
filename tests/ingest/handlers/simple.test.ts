@@ -39,7 +39,7 @@ describe('integrity-violation', () => {
     expect(run(fixture('integrity-violation')).alert).toBeNull();
   });
   it('alerts even when an approval covers the origin', () => {
-    addApprovalPattern(deps.db, site.id, 'https://cdn.example.net/lib.js', ['script'], T);
+    addApprovalPattern(deps.db, site.id, 'https://cdn.example.net/lib.js', ['integrity-violation:script'], T);
     const x = run(fixture('integrity-violation'));
     expect(x.r.status).toBe('approved');
     expect(x.alert?.kind).toBe('integrity');
@@ -72,7 +72,7 @@ describe('connection-allowlist', () => {
   it('second occurrence and approved rows do not alert', () => {
     run(fixture('connection-allowlist'));
     expect(run(fixture('connection-allowlist')).alert).toBeNull();
-    addApprovalPattern(deps.db, site.id, 'https://other.example.net', ['beacon'], T);
+    addApprovalPattern(deps.db, site.id, 'https://other.example.net', ['connection-allowlist:beacon'], T);
     const x = run(withBody(fixture('connection-allowlist'), { type: 'beacon', blockedURL: 'https://other.example.net/p' }));
     expect(x.r.status).toBe('approved');
     expect(x.alert).toBeNull();

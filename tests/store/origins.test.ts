@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { openDb } from '../../src/db/db.js';
 import { createSite, type Site } from '../../src/store/sites.js';
 import {
-  addApprovalPattern, approveOrigin, isCovered, markSuspect, recordCspEvent, recordNoise, removeApproval,
+  addApprovalPattern, approveOrigin, approveTypeRow, isCovered, markSuspect, recordCspEvent, recordGeneric, recordNoise, removeApproval,
+  type SampleInput,
 } from '../../src/store/origins.js';
 import { decideCspAlert } from '../../src/alerts/decide.js';
 import type { CspEvent } from '../../src/ingest/csp.js';
+import { typeRows } from '../../src/web/queries.js';
 import { NOW } from '../helpers.js';
 
 const DAY = 24 * 3600 * 1000;
@@ -248,6 +250,45 @@ describe('approvals', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM approvals').get()).toEqual({ n: 0 });
     expect(db.prepare('SELECT status FROM origins').get()).toEqual({ status: 'approved' });
     expect(isCovered(db, site.id, 'https://x.com', 'script-src')).toBe(false);
+  });
+});
+
+describe('approvals of other report types', () => {
+  const smp: SampleInput = { sourceFile: '', sample: '', line: null, ua: '', disposition: 'report', body: '{}' };
+  const rec = (db: ReturnType<typeof setup>['db'], s: Site, type: string, a: string, b: string, at = T0) =>
+    recordGeneric(db, s, type, a, b, 'external', '/p', smp, at);
+  const row = (type: string, a: string, b: string) => ({ reportType: type, directive: a, origin: b });
+
+  it('approves csp-hash, coop and coep rows, namespaced by report type', () => {
+    const { db, site } = setup();
+    for (const [type, a, b] of [['csp-hash', 'script', 'https://a.it/app.js'], ['coop', 'navigation-to-document', 'https://pay.example'],
+      ['coep', 'script', 'https://cdn.example/lib.js']] as const) {
+      const r = rec(db, site, type, a, b);
+      rec(db, site, type, a, 'https://unrelated.example');
+      approveTypeRow(db, site.id, row(type, a, b), 'site', T1);
+      expect(db.prepare('SELECT status FROM origins WHERE id = ?').get(r.originId), type).toEqual({ status: 'approved' });
+      expect(db.prepare("SELECT status FROM origins WHERE report_type = ? AND origin = 'https://unrelated.example'").get(type), type)
+        .toEqual({ status: 'new' });
+      expect(db.prepare('SELECT directive FROM approvals WHERE pattern = ?').get(b), type).toEqual({ directive: `${type}:${a}` });
+      // a later row with the same type and keys starts approved
+      expect(rec(db, { ...site }, type, a, b, T1 + 1).status).toBe('approved');
+    }
+  });
+
+  it('a csp-hash approval does not cover a COEP row for the same URL', () => {
+    const { db, site } = setup();
+    rec(db, site, 'csp-hash', 'script', 'https://cdn.example/lib.js');
+    approveTypeRow(db, site.id, row('csp-hash', 'script', 'https://cdn.example/lib.js'), 'global', T1);
+    expect(rec(db, site, 'coep', 'script', 'https://cdn.example/lib.js', T1).status).toBe('new');
+    expect(rec(db, site, 'integrity-violation', 'script', 'https://cdn.example/lib.js', T1).status).toBe('new');
+  });
+
+  it('a global non-CSP approval covers the same type on another site and shows as globale', () => {
+    const { db, site, other } = setup();
+    rec(db, site, 'coep', 'script', 'https://cdn.example/lib.js');
+    approveTypeRow(db, site.id, row('coep', 'script', 'https://cdn.example/lib.js'), 'global', T1);
+    expect(rec(db, other, 'coep', 'script', 'https://cdn.example/lib.js', T1).status).toBe('approved');
+    expect(typeRows(db, other.id, 'coep')[0]!.status).toBe('global');
   });
 });
 

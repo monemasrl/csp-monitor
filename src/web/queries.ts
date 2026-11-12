@@ -3,6 +3,7 @@ import type { Db } from '../db/db.js';
 import { BUILTIN_NOISE } from '../ingest/noise.js';
 import { isRiskyWildcard, matchesPattern } from '../match.js';
 import { listDiscarded, type Discarded } from '../store/discarded.js';
+import { approvalDirective } from '../store/origins.js';
 import { listSites, type Site } from '../store/sites.js';
 import { utcDay } from '../time.js';
 import { isApprovableSource, parsePattern } from './validate.js';
@@ -372,7 +373,7 @@ export function typeRows(db: Db, siteId: number, reportType: string): TypeRow[] 
   return rows.map(r => ({
     id: r.id, siteId: r.site_id, directive: r.directive, origin: r.origin,
     // approvals of these types are exact (pattern = keyB), so 'globale' is an exact match too
-    status: r.status === 'approved' ? (globals.has(`${r.directive}\n${r.origin}`) ? 'global' : 'approved') : r.status === 'suspect' ? 'suspect' : 'new',
+    status: r.status === 'approved' ? (globals.has(`${approvalDirective(reportType, r.directive)}\n${r.origin}`) ? 'global' : 'approved') : r.status === 'suspect' ? 'suspect' : 'new',
     firstSeen: r.first_seen, lastSeen: r.last_seen, count: r.count, firstPage: r.first_page ?? '',
     detail: parseDetail(r.detail),
     last: {
