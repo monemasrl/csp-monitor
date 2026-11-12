@@ -1,5 +1,6 @@
 import { openDb } from '../src/db/db.js';
 import type { Deps } from '../src/web/app.js';
+import { KnownCache, RateLimiter } from '../src/ingest/limits.js';
 import { loadConfig } from '../src/config.js';
 
 export const NOW = Date.UTC(2026, 10, 12, 9, 0);
@@ -22,6 +23,9 @@ export function testDeps(overrides: Partial<Deps> = {}): Deps {
     config: loadConfig(validEnv()),
     now: () => NOW,
     channels: [],
+    limiter: new RateLimiter(),
+    known: new KnownCache(),
+    onAlert: () => {}, // Task 9: enqueueAlert
     ...overrides,
   };
 }
