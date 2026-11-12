@@ -185,6 +185,16 @@ describe('learning summary', () => {
     expect(ch.sent[1]!.text).toContain('c2.example');
   });
 
+  it('items carry the report type of their row', () => {
+    const { db, s1, o } = setup();
+    const smp = { sourceFile: '', sample: '', line: null, ua: '', disposition: 'report', body: '{}' };
+    const h = recordGeneric(db, s1, 'csp-hash', 'script', 'https://a.example.it/app.js', 'external', '/p', smp, T).originId;
+    enqueueAlert(db, s1.id, o(s1, 'https://c1.example'), T);
+    enqueue(db, s1.id, { kind: 'hash-changed', originId: h }, T);
+    const [b] = dueBatches(db, T + 600_000);
+    expect(b!.items.map(i => i.reportType)).toEqual(['csp-violation', 'csp-hash']);
+  });
+
   it('keeps payloads, dedups per (kind, origin) and keeps integrity when approved', () => {
     const { db, s1, o } = setup();
     const o1 = o(s1, 'https://c1.example');

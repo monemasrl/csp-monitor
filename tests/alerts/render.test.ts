@@ -75,6 +75,19 @@ describe('EmailChannel', () => {
     expect(m.text).toContain('== Script modificato (2) ==');
     expect(m.html).toContain('<h3>Script modificato (2)</h3>');
   });
+  it('non-CSP origin items link to their type page, CSP ones to the origin page', () => {
+    const items: AlertItemAny[] = [
+      { ...item(), kind: 'new-origin', reportType: 'csp-violation' },
+      { ...item({ originId: 8 }), kind: 'hash-changed', reportType: 'csp-hash' },
+      { ...item({ originId: 9 }), kind: 'permission', reportType: 'permissions-policy-violation' },
+    ];
+    const m = renderAlertBatch({ site: { ...site, name: 'S' }, items, pendingIds: [1, 2, 3] }, BASE);
+    expect(m.text).toContain(`${BASE}/sites/3/origins/7`);
+    expect(m.text).toContain(`${BASE}/sites/3/types/csp-hash`);
+    expect(m.text).toContain(`${BASE}/sites/3/types/permissions-policy`);
+    expect(m.text).not.toContain('/origins/8');
+    expect(m.html).toContain(`href="${BASE}/sites/3/types/permissions-policy"`);
+  });
   it('origin items with a payload show the payload too, escaped', () => {
     const items: AlertItemAny[] = [
       { ...item({ origin: 'UnloadHandler', directive: 'api' }), kind: 'deprecation-reminder', payload: { api: 'UnloadHandler', removal: '2027-03-01' } },
