@@ -26,8 +26,7 @@ describe('pruneData', () => {
     for (let i = 0; i < 30; i++) addSample(db, 1, NOW - 20 * DAY - i * 1000);
     for (let i = 0; i < 5; i++) addSample(db, 1, NOW - DAY - i * 1000);
     pruneData(db, NOW);
-    // union of top-20 and last-7-days: the 5 recent ones are inside the top 20
-    expect(db.prepare('SELECT COUNT(*) c FROM samples').get()).toEqual({ c: 20 });
+    expect(db.prepare('SELECT COUNT(*) c FROM samples').get()).toEqual({ c: 25 });
     expect(db.prepare('SELECT COUNT(*) c FROM samples WHERE received_at >= ?').get(NOW - 7 * DAY)).toEqual({ c: 5 });
   });
 

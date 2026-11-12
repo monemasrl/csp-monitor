@@ -17,14 +17,15 @@ export function pruneData(db: Db, now: number): void {
     // Orphans (origin gone) are dropped; NULL-origin samples are ranked per site.
     db.prepare(`DELETE FROM samples WHERE origin_id IS NOT NULL
                   AND origin_id NOT IN (SELECT id FROM origins)`).run();
-    db.prepare(`DELETE FROM samples WHERE id IN (
+    // Keep everything from the last 7 days, plus the 20 most recent older ones (rank only older rows).
+    db.prepare(`DELETE FROM samples WHERE received_at < ? AND id IN (
       SELECT id FROM (
-        SELECT id, received_at,
+        SELECT id,
                ROW_NUMBER() OVER (
                  PARTITION BY CASE WHEN origin_id IS NULL THEN -site_id ELSE origin_id END
                  ORDER BY received_at DESC, id DESC) AS rn
-        FROM samples)
-      WHERE rn > ? AND received_at < ?)`).run(KEEP_SAMPLES, now - 7 * DAY_MS);
+        FROM samples WHERE received_at < ?)
+      WHERE rn > ?)`).run(now - 7 * DAY_MS, now - 7 * DAY_MS, KEEP_SAMPLES);
   });
   run();
 }
